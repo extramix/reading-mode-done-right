@@ -22,3 +22,6 @@ A Kindle-like reading mode for documentation and article pages. Toggle it on/off
 - Code blocks include a copy button and basic syntax highlighting.
 - The reader scroll is synchronized to the underlying page scroll position.
 - Highlights are stored per page URL.
+- Clicking links in reader mode opens them in a new tab and auto-opens reader mode at the top.
+- Images stay within paragraph width by default; click any image to open a full-size preview modal.
+- Toggle shortcut is configurable in reader settings (`Ctrl+R` default on macOS).

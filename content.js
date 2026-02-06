@@ -1,4 +1,5 @@
 (() => {
+  const DEFAULT_TOGGLE_SHORTCUT = getDefaultToggleShortcut();
   const DEFAULT_SETTINGS = {
     readerTheme: 'light',
     fontFamily: '"Inter", "Helvetica Neue", Arial, sans-serif',
@@ -11,7 +12,8 @@
     codeFontFamily: '"SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace',
     codeFontSize: 14,
     codeTheme: 'light',
-    wrapCode: false
+    wrapCode: false,
+    toggleShortcut: DEFAULT_TOGGLE_SHORTCUT
   };
 
   const THEME_PRESETS = {
@@ -71,6 +73,7 @@
   };
   const BUILTIN_LITERALS = new Set(['true', 'false', 'null', 'none', 'undefined']);
   const HIGHLIGHT_STORE_KEY = 'rmHighlightsV1';
+  const PENDING_OPEN_KEY = 'rmPendingOpenV1';
 
   let overlay = null;
   let settingsPanel = null;
@@ -78,6 +81,12 @@
   let readerViewport = null;
   let highlightButton = null;
   let messageToast = null;
+  let mediaModal = null;
+  let mediaModalImage = null;
+  let mediaModalCaption = null;
+  let shortcutInput = null;
+  let shortcutHint = null;
+  let isCapturingShortcut = false;
   let currentSettings = { ...DEFAULT_SETTINGS };
   let pendingPageScrollSync = false;
   let currentPageHighlights = [];
@@ -87,6 +96,8 @@
       toggleReader();
     }
   });
+
+  initializeAutoOpenFromNavigation();
 
   async function toggleReader() {
     await ensureOverlay();
@@ -99,16 +110,25 @@
     }
   }
 
-  function openReader() {
+  function openReader(options = {}) {
+    const { resetToTop = false } = options;
     if (!overlay) return;
     overlay.dataset.open = 'true';
     overlay.setAttribute('aria-hidden', 'false');
     renderContent();
-    syncReaderFromPageScroll();
+    if (resetToTop) {
+      window.scrollTo(0, 0);
+      if (readerViewport) {
+        readerViewport.scrollTop = 0;
+      }
+    } else {
+      syncReaderFromPageScroll();
+    }
   }
 
   function closeReader() {
     if (!overlay) return;
+    closeMediaModal();
     overlay.dataset.open = 'false';
     overlay.setAttribute('aria-hidden', 'true');
   }
@@ -199,6 +219,15 @@
         <label for="rm-code-font">Code font</label>
         <select id="rm-code-font"></select>
       </div>
+      <div class="rm-setting">
+        <label for="rm-shortcut-input">Toggle shortcut</label>
+        <div class="rm-shortcut-row">
+          <input id="rm-shortcut-input" type="text" readonly />
+          <button id="rm-shortcut-set" type="button">Set</button>
+          <button id="rm-shortcut-reset" type="button">Reset</button>
+        </div>
+        <div id="rm-shortcut-hint">Press Set, then your key combo.</div>
+      </div>
       <div class="rm-setting rm-range">
         <label for="rm-code-size">Code size</label>
         <input id="rm-code-size" type="range" min="12" max="18" step="1" />
@@ -224,6 +253,8 @@
 
     contentRoot = document.createElement('div');
     contentRoot.id = 'rm-content';
+    contentRoot.addEventListener('click', onReaderLinkClick, true);
+    contentRoot.addEventListener('click', onMediaClick);
     contentRoot.addEventListener('dblclick', onHighlightDoubleClick);
     reader.appendChild(contentRoot);
 
@@ -231,10 +262,25 @@
     messageToast.id = 'rm-toast';
     messageToast.setAttribute('aria-live', 'polite');
 
+    mediaModal = document.createElement('div');
+    mediaModal.id = 'rm-media-modal';
+    mediaModal.setAttribute('aria-hidden', 'true');
+    mediaModal.innerHTML = `
+      <div id="rm-media-modal-backdrop"></div>
+      <div id="rm-media-modal-dialog" role="dialog" aria-modal="true" aria-label="Image preview">
+        <button id="rm-media-close" type="button" aria-label="Close image preview">✕</button>
+        <img id="rm-media-image" alt="" />
+        <div id="rm-media-caption"></div>
+      </div>
+    `;
+    mediaModalImage = mediaModal.querySelector('#rm-media-image');
+    mediaModalCaption = mediaModal.querySelector('#rm-media-caption');
+
     overlay.appendChild(toolbar);
     overlay.appendChild(settingsPanel);
     overlay.appendChild(reader);
     overlay.appendChild(messageToast);
+    overlay.appendChild(mediaModal);
     document.body.appendChild(overlay);
 
     settingsToggle.addEventListener('click', () => {
@@ -249,6 +295,22 @@
       closeReader();
     });
 
+    mediaModal.querySelector('#rm-media-close').addEventListener('click', () => {
+      closeMediaModal();
+    });
+
+    mediaModal.querySelector('#rm-media-modal-backdrop').addEventListener('click', () => {
+      closeMediaModal();
+    });
+
+    mediaModal.addEventListener('click', (event) => {
+      const dialog = mediaModal.querySelector('#rm-media-modal-dialog');
+      if (!dialog) return;
+      if (!dialog.contains(event.target)) {
+        closeMediaModal();
+      }
+    });
+
     overlay.addEventListener('click', (event) => {
       if (event.target === overlay && overlay.classList.contains('rm-settings-open')) {
         overlay.classList.remove('rm-settings-open');
@@ -256,9 +318,21 @@
     });
 
     document.addEventListener('keydown', (event) => {
+      if (isCapturingShortcut) return;
+      if (!isInputLikeElement(event.target) && shortcutMatchesEvent(currentSettings.toggleShortcut, event)) {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleReader();
+        return;
+      }
+
       if (overlay.dataset.open !== 'true') return;
       if (event.key === 'Escape') {
-        closeReader();
+        if (isMediaModalOpen()) {
+          closeMediaModal();
+        } else {
+          closeReader();
+        }
         return;
       }
       if ((event.key === 'h' || event.key === 'H') && !event.metaKey && !event.ctrlKey && !event.altKey) {
@@ -285,6 +359,10 @@
     const bgInput = settingsPanel.querySelector('#rm-bg');
     const textInput = settingsPanel.querySelector('#rm-text');
     const codeFontInput = settingsPanel.querySelector('#rm-code-font');
+    shortcutInput = settingsPanel.querySelector('#rm-shortcut-input');
+    const shortcutSetButton = settingsPanel.querySelector('#rm-shortcut-set');
+    const shortcutResetButton = settingsPanel.querySelector('#rm-shortcut-reset');
+    shortcutHint = settingsPanel.querySelector('#rm-shortcut-hint');
     const codeSizeInput = settingsPanel.querySelector('#rm-code-size');
     const codeSizeValue = settingsPanel.querySelector('#rm-code-size-value');
     const codeThemeSync = settingsPanel.querySelector('#rm-code-theme-sync');
@@ -304,10 +382,14 @@
       bgInput.value = values.bgColor;
       textInput.value = values.textColor;
       populateSelect(codeFontInput, CODE_FONT_CHOICES, values.codeFontFamily);
+      shortcutInput.value = formatShortcut(values.toggleShortcut);
       codeSizeInput.value = String(values.codeFontSize);
       codeSizeValue.textContent = `${values.codeFontSize}px`;
       codeThemeSync.textContent = theme === 'dark' ? 'Dark (synced)' : 'Light (synced)';
       wrapCodeInput.checked = Boolean(values.wrapCode);
+      if (!isCapturingShortcut) {
+        shortcutHint.textContent = 'Press Set, then your key combo.';
+      }
     }
 
     function updateSettings(partial) {
@@ -355,6 +437,39 @@
 
     codeFontInput.addEventListener('change', (event) => {
       updateSettings({ codeFontFamily: event.target.value.trim() || DEFAULT_SETTINGS.codeFontFamily });
+    });
+
+    shortcutSetButton.addEventListener('click', () => {
+      isCapturingShortcut = true;
+      shortcutHint.textContent = 'Press keys now (Esc to cancel).';
+      shortcutInput.value = 'Press keys...';
+      shortcutInput.focus();
+    });
+
+    shortcutInput.addEventListener('keydown', (event) => {
+      if (!isCapturingShortcut) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === 'Escape') {
+        isCapturingShortcut = false;
+        shortcutHint.textContent = 'Capture cancelled.';
+        shortcutInput.value = formatShortcut(currentSettings.toggleShortcut);
+        return;
+      }
+      const nextShortcut = eventToShortcut(event);
+      if (!nextShortcut) {
+        shortcutHint.textContent = 'Use a non-modifier key (e.g. Ctrl+R).';
+        return;
+      }
+      isCapturingShortcut = false;
+      updateSettings({ toggleShortcut: nextShortcut });
+      shortcutHint.textContent = `Saved: ${formatShortcut(nextShortcut)}`;
+    });
+
+    shortcutResetButton.addEventListener('click', () => {
+      isCapturingShortcut = false;
+      updateSettings({ toggleShortcut: getDefaultToggleShortcut() });
+      shortcutHint.textContent = `Reset to ${formatShortcut(getDefaultToggleShortcut())}`;
     });
 
     codeSizeInput.addEventListener('input', (event) => {
@@ -424,6 +539,75 @@
     enhanceCallouts(contentRoot);
     enhanceCodeBlocks(contentRoot);
     restoreHighlightsForCurrentPage();
+  }
+
+  async function initializeAutoOpenFromNavigation() {
+    const pending = await loadPendingOpen();
+    if (!pending) return;
+
+    const now = Date.now();
+    if (!pending.expiresAt || pending.expiresAt < now) {
+      clearPendingOpen();
+      return;
+    }
+
+    const currentUrl = toComparableUrl(window.location.href);
+    const referrerUrl = toComparableUrl(document.referrer || '');
+    const sourceUrl = toComparableUrl(pending.sourceUrl || '');
+    const destinationUrl = toComparableUrl(pending.destinationUrl || '');
+
+    const destinationMatches = Boolean(destinationUrl && destinationUrl === currentUrl);
+    const sourceMatchesReferrer = Boolean(sourceUrl && referrerUrl && sourceUrl === referrerUrl);
+    if (!destinationMatches && !sourceMatchesReferrer) {
+      return;
+    }
+
+    clearPendingOpen();
+    await ensureOverlay();
+    openReader({ resetToTop: Boolean(pending.resetToTop) });
+  }
+
+  function onReaderLinkClick(event) {
+    if (isMediaModalOpen()) {
+      event.preventDefault();
+      return;
+    }
+    const target = event.target;
+    if (!target || !target.closest) return;
+    const anchor = target.closest('a[href]');
+    if (!anchor) return;
+    if (event.defaultPrevented) return;
+    if (!isPrimaryNavigationClick(event)) return;
+    if (anchor.hasAttribute('download')) return;
+
+    const href = anchor.getAttribute('href') || '';
+    const targetAttr = (anchor.getAttribute('target') || '').toLowerCase();
+    if (!href || href.startsWith('#')) return;
+    if (href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
+    if (targetAttr && targetAttr !== '_self') return;
+
+    const destinationUrl = resolveAbsoluteUrl(href);
+    if (!destinationUrl) return;
+    event.preventDefault();
+    markReaderOpenForNextNavigation(destinationUrl, { resetToTop: true });
+    const newTab = window.open(destinationUrl, '_blank', 'noopener');
+    if (!newTab) {
+      showToast('Popup blocked. Enable popups for new-tab open.');
+    }
+  }
+
+  function onMediaClick(event) {
+    if (event.defaultPrevented) return;
+    const target = event.target;
+    if (!target || target.tagName !== 'IMG') return;
+    if (target.closest('#rm-media-modal')) return;
+    if (!contentRoot || !contentRoot.contains(target)) return;
+    if (target.closest('pre')) return;
+    if (target.closest('a[href]')) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    openMediaModal(target);
   }
 
   function onHighlightDoubleClick(event) {
@@ -684,6 +868,130 @@
 
   function getPageKey() {
     return `${window.location.origin}${window.location.pathname}`;
+  }
+
+  function openMediaModal(img) {
+    if (!mediaModal || !mediaModalImage || !mediaModalCaption) return;
+    const source = getBestModalImageSource(img);
+    if (!source) return;
+    mediaModalImage.setAttribute('src', source);
+    mediaModalImage.setAttribute('alt', img.getAttribute('alt') || '');
+    const alt = (img.getAttribute('alt') || '').trim();
+    if (alt) {
+      mediaModalCaption.textContent = alt;
+      mediaModalCaption.style.display = 'block';
+    } else {
+      mediaModalCaption.textContent = '';
+      mediaModalCaption.style.display = 'none';
+    }
+    mediaModal.classList.add('open');
+    mediaModal.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeMediaModal() {
+    if (!mediaModal) return;
+    mediaModal.classList.remove('open');
+    mediaModal.setAttribute('aria-hidden', 'true');
+    if (mediaModalImage) {
+      mediaModalImage.removeAttribute('src');
+    }
+  }
+
+  function isMediaModalOpen() {
+    return Boolean(mediaModal && mediaModal.classList.contains('open'));
+  }
+
+  function getBestModalImageSource(img) {
+    const current = img.currentSrc || img.getAttribute('src') || '';
+    const largestFromImg = pickLargestFromSrcset(img.getAttribute('srcset') || '');
+    const picture = img.closest('picture');
+    const candidates = [largestFromImg, current];
+    if (picture) {
+      picture.querySelectorAll('source').forEach((sourceNode) => {
+        candidates.push(pickLargestFromSrcset(sourceNode.getAttribute('srcset') || ''));
+      });
+    }
+
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      try {
+        return new URL(candidate, window.location.href).href;
+      } catch (err) {
+        // ignore malformed candidate
+      }
+    }
+    return '';
+  }
+
+  function pickLargestFromSrcset(srcset) {
+    if (!srcset) return '';
+    const items = srcset
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const pieces = part.split(/\s+/);
+        const url = pieces[0] || '';
+        const descriptor = pieces[1] || '';
+        const wMatch = descriptor.match(/^(\d+)w$/);
+        return {
+          url,
+          width: wMatch ? Number(wMatch[1]) : 0
+        };
+      })
+      .filter((item) => item.url);
+    if (!items.length) return '';
+    items.sort((a, b) => b.width - a.width);
+    return items[0].url;
+  }
+
+  function markReaderOpenForNextNavigation(destinationUrl, options = {}) {
+    const { resetToTop = false } = options;
+    const payload = {
+      sourceUrl: toComparableUrl(window.location.href),
+      destinationUrl: toComparableUrl(destinationUrl),
+      resetToTop: Boolean(resetToTop),
+      expiresAt: Date.now() + 20000
+    };
+    chrome.storage.local.set({ [PENDING_OPEN_KEY]: payload });
+  }
+
+  function loadPendingOpen() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get({ [PENDING_OPEN_KEY]: null }, (result) => {
+        resolve(result && result[PENDING_OPEN_KEY] ? result[PENDING_OPEN_KEY] : null);
+      });
+    });
+  }
+
+  function clearPendingOpen() {
+    chrome.storage.local.remove(PENDING_OPEN_KEY);
+  }
+
+  function resolveAbsoluteUrl(rawHref) {
+    try {
+      return new URL(rawHref, window.location.href).href;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function toComparableUrl(rawUrl) {
+    if (!rawUrl) return '';
+    try {
+      const parsed = new URL(rawUrl, window.location.href);
+      parsed.hash = '';
+      return `${parsed.origin}${parsed.pathname}${parsed.search}`;
+    } catch (err) {
+      return '';
+    }
+  }
+
+  function isPrimaryNavigationClick(event) {
+    if (!event) return false;
+    if (event.button !== 0) return false;
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return false;
+    return true;
   }
 
   function showToast(message) {
@@ -991,12 +1299,20 @@
     container.querySelectorAll('img').forEach((img) => {
       const src = img.getAttribute('src');
       if (!src) return;
+      img.removeAttribute('width');
+      img.removeAttribute('height');
+      img.removeAttribute('sizes');
+      img.classList.add('rm-zoomable-media');
       try {
         const abs = new URL(src, window.location.href).href;
         img.setAttribute('src', abs);
       } catch (err) {
         // ignore invalid URLs
       }
+    });
+
+    container.querySelectorAll('picture, figure').forEach((node) => {
+      node.classList.add('rm-zoomable-media');
     });
 
     container.querySelectorAll('a').forEach((anchor) => {
@@ -1197,10 +1513,17 @@
     if (root.removeAttribute) {
       root.removeAttribute('class');
       root.removeAttribute('style');
+      root.removeAttribute('tabindex');
+      root.removeAttribute('contenteditable');
+      root.removeAttribute('data-nextjs-scroll-focus-boundary');
     }
     root.querySelectorAll('*').forEach((node) => {
       node.removeAttribute('class');
       node.removeAttribute('style');
+      node.removeAttribute('tabindex');
+      node.removeAttribute('contenteditable');
+      node.removeAttribute('data-nextjs-scroll-focus-boundary');
+      node.removeAttribute('autofocus');
     });
   }
 
@@ -1344,6 +1667,7 @@
     const theme = normalizeTheme(merged.readerTheme);
     merged.readerTheme = theme;
     merged.codeTheme = theme;
+    merged.toggleShortcut = normalizeShortcut(merged.toggleShortcut);
     return merged;
   }
 
@@ -1366,6 +1690,110 @@
       .map((item) => `<option value="${escapeHtml(item.value)}">${escapeHtml(item.label)}</option>`)
       .join('');
     selectElement.value = currentValue;
+  }
+
+  function getDefaultToggleShortcut() {
+    if (isMacOS()) {
+      return {
+        key: 'r',
+        ctrlKey: false,
+        altKey: true,
+        shiftKey: false,
+        metaKey: false
+      };
+    }
+    return {
+      key: 'r',
+      ctrlKey: true,
+      altKey: false,
+      shiftKey: true,
+      metaKey: false
+    };
+  }
+
+  function isMacOS() {
+    return /Mac|iPhone|iPad|iPod/.test(navigator.platform || '');
+  }
+
+  function normalizeShortcut(shortcut) {
+    const base = getDefaultToggleShortcut();
+    if (!shortcut || typeof shortcut !== 'object') return base;
+    const key = normalizeShortcutKey(shortcut.key);
+    if (!key) return base;
+    const normalized = {
+      key,
+      ctrlKey: Boolean(shortcut.ctrlKey),
+      altKey: Boolean(shortcut.altKey),
+      shiftKey: Boolean(shortcut.shiftKey),
+      metaKey: Boolean(shortcut.metaKey)
+    };
+    if (!normalized.ctrlKey && !normalized.altKey && !normalized.shiftKey && !normalized.metaKey) {
+      return base;
+    }
+    if (isMacOS() && normalized.key === 'r' && !normalized.shiftKey) {
+      const cmdOnly = normalized.metaKey && !normalized.ctrlKey && !normalized.altKey;
+      const ctrlOnly = normalized.ctrlKey && !normalized.metaKey && !normalized.altKey;
+      if (cmdOnly || ctrlOnly) {
+        // Keep mac default on Option+R and avoid browser reload conflicts.
+        normalized.metaKey = false;
+        normalized.ctrlKey = false;
+        normalized.altKey = true;
+      }
+    }
+    return normalized;
+  }
+
+  function eventToShortcut(event) {
+    const key = normalizeShortcutKey(event.key);
+    if (!key) return null;
+    if (key === 'Control' || key === 'Alt' || key === 'Shift' || key === 'Meta') return null;
+    return {
+      key,
+      ctrlKey: Boolean(event.ctrlKey),
+      altKey: Boolean(event.altKey),
+      shiftKey: Boolean(event.shiftKey),
+      metaKey: Boolean(event.metaKey)
+    };
+  }
+
+  function normalizeShortcutKey(key) {
+    if (!key || typeof key !== 'string') return '';
+    if (key.length === 1) return key.toLowerCase();
+    const alias = {
+      ' ': 'Space',
+      Spacebar: 'Space',
+      Esc: 'Escape',
+      Del: 'Delete'
+    };
+    return alias[key] || key;
+  }
+
+  function formatShortcut(shortcut) {
+    const value = normalizeShortcut(shortcut);
+    const mac = isMacOS();
+    const parts = [];
+    if (value.ctrlKey) parts.push(mac ? '^' : 'Ctrl');
+    if (value.altKey) parts.push(mac ? 'Option' : 'Alt');
+    if (value.shiftKey) parts.push('Shift');
+    if (value.metaKey) parts.push(mac ? 'Cmd' : 'Meta');
+    parts.push(formatShortcutKeyForDisplay(value.key));
+    return parts.join('+');
+  }
+
+  function formatShortcutKeyForDisplay(key) {
+    if (!key) return '';
+    if (key.length === 1) return key.toUpperCase();
+    return key;
+  }
+
+  function shortcutMatchesEvent(shortcut, event) {
+    const value = normalizeShortcut(shortcut);
+    if (Boolean(event.ctrlKey) !== value.ctrlKey) return false;
+    if (Boolean(event.altKey) !== value.altKey) return false;
+    if (Boolean(event.shiftKey) !== value.shiftKey) return false;
+    if (Boolean(event.metaKey) !== value.metaKey) return false;
+    const key = normalizeShortcutKey(event.key);
+    return key === value.key;
   }
 
   function normalizeText(value) {
