@@ -1,4 +1,8 @@
+function toggleReaderOnTab(tabId) {
+  if (!tabId) return;
+  chrome.tabs.sendMessage(tabId, { type: "RM_TOGGLE" });
+}
+
 chrome.action.onClicked.addListener((tab) => {
-  if (!tab || !tab.id) return;
-  chrome.tabs.sendMessage(tab.id, { type: "RM_TOGGLE" });
+  toggleReaderOnTab(tab?.id);
 });

@@ -1,6 +1,6 @@
 # Reading Mode Done Right
 
-A Kindle-like reading mode for AWS Docs pages. Toggle it on/off in the same tab and tune typography, width, and colors.
+A Kindle-like reading mode for documentation and article pages. Toggle it on/off in the same tab and tune typography, width, colors, and code styling.
 
 ## Load the extension
 
@@ -10,11 +10,15 @@ A Kindle-like reading mode for AWS Docs pages. Toggle it on/off in the same tab 
 
 ## Use it
 
-1. Visit an AWS Docs page like `https://docs.aws.amazon.com/...`.
+1. Visit a docs/article page.
 2. Click the extension icon to toggle reading mode.
 3. Open **Settings** to adjust fonts, width, colors, and code styling.
+4. Select text and click **Highlight** (or press `H`) to save a highlight.
+5. Double-click a highlight to remove it.
 
 ## Notes
 
 - Settings are stored in Chrome sync storage.
 - Code blocks include a copy button and basic syntax highlighting.
+- The reader scroll is synchronized to the underlying page scroll position.
+- Highlights are stored per page URL.
