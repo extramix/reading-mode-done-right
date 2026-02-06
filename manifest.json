@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Reading Mode Done Right",
+  "version": "0.1.0",
+  "description": "Kindle-like reading mode for AWS Docs.",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": ["https://docs.aws.amazon.com/*"],
+  "action": {
+    "default_title": "Toggle Reading Mode"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://docs.aws.amazon.com/*"],
+      "js": ["content.js"],
+      "css": ["reader.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}
