@@ -14,7 +14,7 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["dist/content.js"],
+      "js": ["dist/content-utils.js", "dist/content-settings.js", "dist/content.js"],
       "css": ["reader.css"],
       "run_at": "document_idle"
     }
