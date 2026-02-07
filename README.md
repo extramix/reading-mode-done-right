@@ -2,6 +2,16 @@
 
 A Kindle-like reading mode for documentation and article pages. Toggle it on/off in the same tab and tune typography, width, colors, and code styling.
 
+## Why?
+I built this out of frustration. Some documentation pages just don’t care about reading experience.
+
+Imagine opening AWS docs on a 27-inch screen. You go full screen to focus, and what do you get? Paragraphs stretching left to right with a line height that feels uncomfortable. Sure, they have focus mode, but those settings don’t stick. Go to the next page and you’re making the same adjustments all over again.
+
+Article-saving tools don’t solve this either. Sometimes I just want to read right there, right now, without saving anything.
+
+Also, even though people (me included) now rely on LLMs when they can’t find what they’re looking for, I still think keeping context in your own brain matters.
+
+
 ## Load the extension
 
 1. Open `chrome://extensions` in Chrome.
