@@ -1,7 +1,9 @@
 # Reading Mode Done Right
 
-A Kindle-like reading mode for documentation and article pages. Toggle it on/off in the same tab and tune typography, width, colors, and code styling.
+<img width="2530" height="1282" alt="image" src="https://github.com/user-attachments/assets/dcb73818-0746-49cb-9a96-266e5b2e4724" />
 
+
+> Disclaimer: This project was built with help from Codex.
 ## Why?
 I built this out of frustration. Some documentation pages just don’t care about reading experience.
 
