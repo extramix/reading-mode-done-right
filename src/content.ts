@@ -1,30 +1,4 @@
 (() => {
-  type ReaderTheme = 'light' | 'dark';
-
-  interface Shortcut {
-    key: string;
-    ctrlKey: boolean;
-    altKey: boolean;
-    shiftKey: boolean;
-    metaKey: boolean;
-  }
-
-  interface ReaderSettings {
-    readerTheme: ReaderTheme;
-    fontFamily: string;
-    fontSize: number;
-    lineHeight: number;
-    widthCh: number;
-    paragraphGap: number;
-    bgColor: string;
-    textColor: string;
-    codeFontFamily: string;
-    codeFontSize: number;
-    codeTheme: ReaderTheme;
-    wrapCode: boolean;
-    toggleShortcut: Shortcut;
-  }
-
   interface ReadingStats {
     words: number;
     minutes: number;
@@ -51,79 +25,6 @@
     resetToTop: boolean;
     expiresAt: number;
   }
-
-  interface FontChoice {
-    label: string;
-    value: string;
-  }
-
-  const DEFAULT_TOGGLE_SHORTCUT = getDefaultToggleShortcut();
-  const DEFAULT_SETTINGS: ReaderSettings = {
-    readerTheme: 'light',
-    fontFamily: '"Literata", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif',
-    fontSize: 18,
-    lineHeight: 1.7,
-    widthCh: 72,
-    paragraphGap: 1.15,
-    bgColor: '#f5efe2',
-    textColor: '#1f1b16',
-    codeFontFamily: '"SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace',
-    codeFontSize: 14,
-    codeTheme: 'light',
-    wrapCode: false,
-    toggleShortcut: DEFAULT_TOGGLE_SHORTCUT
-  };
-
-  const THEME_PRESETS = {
-    light: {
-      bgColor: '#f5efe2',
-      textColor: '#1f1b16',
-      codeTheme: 'light'
-    },
-    dark: {
-      bgColor: '#101827',
-      textColor: '#e7e8ec',
-      codeTheme: 'dark'
-    }
-  };
-
-  const FONT_CHOICES: FontChoice[] = [
-    { label: 'Literata', value: '"Literata", Georgia, "Times New Roman", serif' },
-    { label: 'Charter', value: '"Charter", "Bitstream Charter", "Sitka Text", Cambria, serif' },
-    { label: 'Georgia', value: 'Georgia, "Times New Roman", serif' },
-    { label: 'Atkinson Hyperlegible', value: '"Atkinson Hyperlegible", "Inter", Arial, sans-serif' },
-    { label: 'Avenir Sans', value: '"Avenir Next", "Avenir", "Segoe UI", Arial, sans-serif' },
-    { label: 'System Sans', value: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }
-  ];
-
-  const CODE_FONT_CHOICES: FontChoice[] = [
-    { label: 'SF Mono', value: '"SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace' },
-    { label: 'JetBrains Mono', value: '"JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, monospace' },
-    { label: 'Fira Code', value: '"Fira Code", "SFMono-Regular", Menlo, Monaco, Consolas, monospace' },
-    { label: 'Source Code Pro', value: '"Source Code Pro", "SFMono-Regular", Menlo, Monaco, Consolas, monospace' },
-    { label: 'Cascadia Code', value: '"Cascadia Code", "SFMono-Regular", Menlo, Monaco, Consolas, monospace' }
-  ];
-
-  const READING_PRESETS = {
-    comfort: {
-      fontSize: 19,
-      lineHeight: 1.78,
-      widthCh: 66,
-      paragraphGap: 1.24
-    },
-    focus: {
-      fontSize: 18,
-      lineHeight: 1.72,
-      widthCh: 62,
-      paragraphGap: 1.18
-    },
-    dense: {
-      fontSize: 17,
-      lineHeight: 1.58,
-      widthCh: 74,
-      paragraphGap: 1.08
-    }
-  };
 
   const TOKEN_REGEX = /\/\*[\s\S]*?\*\/|\/\/[^\n]*|--[^\n]*|#[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b\d+(?:\.\d+)?\b|@[A-Za-z_][\w]*|\b[A-Za-z_][\w$]*\b/gm;
   const KEYWORDS_BY_LANGUAGE = {
@@ -171,7 +72,7 @@
   let shortcutInput: HTMLInputElement | null = null;
   let shortcutHint: HTMLDivElement | null = null;
   let isCapturingShortcut = false;
-  let currentSettings: ReaderSettings = { ...DEFAULT_SETTINGS };
+  let currentSettings: ReaderSettings = { ...RM_SETTINGS.DEFAULT_SETTINGS };
   let pendingPageScrollSync = false;
   let pendingSelectionActionFrame = 0;
   let pendingSelectionAnchor: Point | null = null;
@@ -233,7 +134,7 @@
 
   async function ensureOverlay() {
     if (overlay) return;
-    currentSettings = await loadSettings();
+    currentSettings = await RM_SETTINGS.load();
     overlay = document.createElement('div');
     overlay.id = 'rm-overlay';
     overlay.dataset.open = 'false';
@@ -475,7 +376,7 @@
 
     document.addEventListener('keydown', (event) => {
       if (isCapturingShortcut) return;
-      if (!isInputLikeElement(event.target) && shortcutMatchesEvent(currentSettings.toggleShortcut, event)) {
+      if (!isInputLikeElement(event.target) && RM_SETTINGS.shortcutMatchesEvent(currentSettings.toggleShortcut, event)) {
         event.preventDefault();
         event.stopPropagation();
         toggleReader();
@@ -537,10 +438,10 @@
     };
 
     function syncControls(values) {
-      const theme = normalizeTheme(values.readerTheme);
+      const theme = RM_SETTINGS.normalizeTheme(values.readerTheme);
       setThemeButtons(themeLightButton, themeDarkButton, theme);
       setPresetButtons(values);
-      populateSelect(fontInput, FONT_CHOICES, values.fontFamily);
+      populateSelect(fontInput, RM_SETTINGS.FONT_CHOICES, values.fontFamily);
       fontSizeInput.value = String(values.fontSize);
       fontSizeValue.textContent = `${values.fontSize}px`;
       lineHeightInput.value = String(values.lineHeight);
@@ -549,8 +450,8 @@
       widthValue.textContent = `${values.widthCh}ch`;
       bgInput.value = values.bgColor;
       textInput.value = values.textColor;
-      populateSelect(codeFontInput, CODE_FONT_CHOICES, values.codeFontFamily);
-      shortcutInput.value = formatShortcut(values.toggleShortcut);
+      populateSelect(codeFontInput, RM_SETTINGS.CODE_FONT_CHOICES, values.codeFontFamily);
+      shortcutInput.value = RM_SETTINGS.formatShortcut(values.toggleShortcut);
       codeSizeInput.value = String(values.codeFontSize);
       codeSizeValue.textContent = `${values.codeFontSize}px`;
       codeThemeSync.textContent = theme === 'dark' ? 'Dark (synced)' : 'Light (synced)';
@@ -573,7 +474,7 @@
     function detectPreset(values) {
       const tolerance = 0.02;
       const keys = ['fontSize', 'lineHeight', 'widthCh', 'paragraphGap'];
-      for (const [name, presetValues] of Object.entries(READING_PRESETS)) {
+      for (const [name, presetValues] of Object.entries(RM_SETTINGS.READING_PRESETS)) {
         const matches = keys.every((key) => {
           const target = Number(values[key]);
           const expected = Number(presetValues[key]);
@@ -586,25 +487,25 @@
     }
 
     function updateSettings(partial) {
-      currentSettings = normalizeSettings({ ...currentSettings, ...partial });
+      currentSettings = RM_SETTINGS.normalize({ ...currentSettings, ...partial });
       applySettings(currentSettings);
-      saveSettings(currentSettings);
+      RM_SETTINGS.save(currentSettings);
       syncControls(currentSettings);
     }
 
     function applyReadingPreset(presetName) {
-      const presetValues = READING_PRESETS[presetName];
+      const presetValues = RM_SETTINGS.READING_PRESETS[presetName];
       if (!presetValues) return;
       updateSettings({ ...presetValues });
-      showToast(`Preset applied: ${capitalize(presetName)}.`);
+      showToast(`Preset applied: ${RM_UTILS.capitalize(presetName)}.`);
     }
 
     themeLightButton.addEventListener('click', () => {
-      updateSettings({ readerTheme: 'light', ...THEME_PRESETS.light, codeTheme: 'light' });
+      updateSettings({ readerTheme: 'light', ...RM_SETTINGS.THEME_PRESETS.light, codeTheme: 'light' });
     });
 
     themeDarkButton.addEventListener('click', () => {
-      updateSettings({ readerTheme: 'dark', ...THEME_PRESETS.dark, codeTheme: 'dark' });
+      updateSettings({ readerTheme: 'dark', ...RM_SETTINGS.THEME_PRESETS.dark, codeTheme: 'dark' });
     });
 
     presetComfortButton.addEventListener('click', () => {
@@ -621,41 +522,41 @@
 
     fontInput.addEventListener('change', (event) => {
       const target = event.currentTarget as HTMLSelectElement;
-      updateSettings({ fontFamily: target.value.trim() || DEFAULT_SETTINGS.fontFamily });
+      updateSettings({ fontFamily: target.value.trim() || RM_SETTINGS.DEFAULT_SETTINGS.fontFamily });
     });
 
     fontSizeInput.addEventListener('input', (event) => {
       const target = event.currentTarget as HTMLInputElement;
-      updateSettings({ fontSize: Number(target.value) || DEFAULT_SETTINGS.fontSize });
+      updateSettings({ fontSize: Number(target.value) || RM_SETTINGS.DEFAULT_SETTINGS.fontSize });
     });
 
     lineHeightInput.addEventListener('input', (event) => {
       const target = event.currentTarget as HTMLInputElement;
-      updateSettings({ lineHeight: Number(target.value) || DEFAULT_SETTINGS.lineHeight });
+      updateSettings({ lineHeight: Number(target.value) || RM_SETTINGS.DEFAULT_SETTINGS.lineHeight });
     });
 
     widthInput.addEventListener('input', (event) => {
       const target = event.currentTarget as HTMLInputElement;
-      updateSettings({ widthCh: Number(target.value) || DEFAULT_SETTINGS.widthCh });
+      updateSettings({ widthCh: Number(target.value) || RM_SETTINGS.DEFAULT_SETTINGS.widthCh });
     });
 
     bgInput.addEventListener('input', (event) => {
       const target = event.currentTarget as HTMLInputElement;
       updateSettings({
-        bgColor: target.value || DEFAULT_SETTINGS.bgColor
+        bgColor: target.value || RM_SETTINGS.DEFAULT_SETTINGS.bgColor
       });
     });
 
     textInput.addEventListener('input', (event) => {
       const target = event.currentTarget as HTMLInputElement;
       updateSettings({
-        textColor: target.value || DEFAULT_SETTINGS.textColor
+        textColor: target.value || RM_SETTINGS.DEFAULT_SETTINGS.textColor
       });
     });
 
     codeFontInput.addEventListener('change', (event) => {
       const target = event.currentTarget as HTMLSelectElement;
-      updateSettings({ codeFontFamily: target.value.trim() || DEFAULT_SETTINGS.codeFontFamily });
+      updateSettings({ codeFontFamily: target.value.trim() || RM_SETTINGS.DEFAULT_SETTINGS.codeFontFamily });
     });
 
     shortcutSetButton.addEventListener('click', () => {
@@ -672,28 +573,28 @@
       if (event.key === 'Escape') {
         isCapturingShortcut = false;
         shortcutHint.textContent = 'Capture cancelled.';
-        shortcutInput.value = formatShortcut(currentSettings.toggleShortcut);
+        shortcutInput.value = RM_SETTINGS.formatShortcut(currentSettings.toggleShortcut);
         return;
       }
-      const nextShortcut = eventToShortcut(event);
+      const nextShortcut = RM_SETTINGS.eventToShortcut(event);
       if (!nextShortcut) {
         shortcutHint.textContent = 'Use a non-modifier key (e.g. Ctrl+R).';
         return;
       }
       isCapturingShortcut = false;
       updateSettings({ toggleShortcut: nextShortcut });
-      shortcutHint.textContent = `Saved: ${formatShortcut(nextShortcut)}`;
+      shortcutHint.textContent = `Saved: ${RM_SETTINGS.formatShortcut(nextShortcut)}`;
     });
 
     shortcutResetButton.addEventListener('click', () => {
       isCapturingShortcut = false;
-      updateSettings({ toggleShortcut: getDefaultToggleShortcut() });
-      shortcutHint.textContent = `Reset to ${formatShortcut(getDefaultToggleShortcut())}`;
+      updateSettings({ toggleShortcut: RM_SETTINGS.getDefaultToggleShortcut() });
+      shortcutHint.textContent = `Reset to ${RM_SETTINGS.formatShortcut(RM_SETTINGS.getDefaultToggleShortcut())}`;
     });
 
     codeSizeInput.addEventListener('input', (event) => {
       const target = event.currentTarget as HTMLInputElement;
-      updateSettings({ codeFontSize: Number(target.value) || DEFAULT_SETTINGS.codeFontSize });
+      updateSettings({ codeFontSize: Number(target.value) || RM_SETTINGS.DEFAULT_SETTINGS.codeFontSize });
     });
 
     wrapCodeInput.addEventListener('change', (event) => {
@@ -702,9 +603,9 @@
     });
 
     resetButton.addEventListener('click', () => {
-      currentSettings = normalizeSettings({ ...DEFAULT_SETTINGS });
+      currentSettings = RM_SETTINGS.normalize({ ...RM_SETTINGS.DEFAULT_SETTINGS });
       applySettings(currentSettings);
-      saveSettings(currentSettings);
+      RM_SETTINGS.save(currentSettings);
       syncControls(currentSettings);
     });
 
@@ -713,7 +614,7 @@
 
   function applySettings(values) {
     if (!overlay) return;
-    const syncedTheme = normalizeTheme(values.readerTheme);
+    const syncedTheme = RM_SETTINGS.normalizeTheme(values.readerTheme);
     overlay.style.setProperty('--rm-font', values.fontFamily);
     overlay.style.setProperty('--rm-font-size', `${values.fontSize}px`);
     overlay.style.setProperty('--rm-line-height', String(values.lineHeight));
@@ -730,19 +631,6 @@
     } else {
       overlay.classList.remove('rm-code-wrap');
     }
-  }
-
-  function loadSettings(): Promise<ReaderSettings> {
-    return new Promise((resolve) => {
-      chrome.storage.sync.get({ rmSettings: DEFAULT_SETTINGS }, (result) => {
-        const stored = result && result.rmSettings ? result.rmSettings : {};
-        resolve(normalizeSettings({ ...DEFAULT_SETTINGS, ...stored }));
-      });
-    });
-  }
-
-  function saveSettings(values: ReaderSettings) {
-    chrome.storage.sync.set({ rmSettings: normalizeSettings(values) });
   }
 
   function renderContent() {
@@ -1325,12 +1213,12 @@
       ? anchorPoint.y
       : rect.bottom;
     const cursorOffset = 4;
-    const left = clamp(anchorX + cursorOffset, margin, overlayWidth - buttonWidth - margin);
+    const left = RM_UTILS.clamp(anchorX + cursorOffset, margin, overlayWidth - buttonWidth - margin);
     let top = anchorY + cursorOffset;
     if (top + buttonHeight > overlayHeight - margin) {
       top = anchorY - buttonHeight - cursorOffset;
     }
-    top = clamp(top, margin, overlayHeight - buttonHeight - margin);
+    top = RM_UTILS.clamp(top, margin, overlayHeight - buttonHeight - margin);
 
     selectionActionButton.style.left = `${Math.round(left)}px`;
     selectionActionButton.style.top = `${Math.round(top)}px`;
@@ -1365,12 +1253,12 @@
       : rect.bottom;
     const cursorOffset = 4;
 
-    const left = clamp(anchorX + cursorOffset, margin, overlayWidth - buttonWidth - margin);
+    const left = RM_UTILS.clamp(anchorX + cursorOffset, margin, overlayWidth - buttonWidth - margin);
     let top = anchorY + cursorOffset;
     if (top + buttonHeight > overlayHeight - margin) {
       top = anchorY - buttonHeight - cursorOffset;
     }
-    top = clamp(top, margin, overlayHeight - buttonHeight - margin);
+    top = RM_UTILS.clamp(top, margin, overlayHeight - buttonHeight - margin);
 
     highlightDeleteButton.style.left = `${Math.round(left)}px`;
     highlightDeleteButton.style.top = `${Math.round(top)}px`;
@@ -1414,7 +1302,7 @@
   }
 
   function calculateReadingStats(root: HTMLElement | null): ReadingStats {
-    const text = normalizeText((root && root.textContent) || '');
+    const text = RM_UTILS.normalizeText((root && root.textContent) || '');
     if (!text) {
       return { words: 0, minutes: 1 };
     }
@@ -1535,7 +1423,7 @@
       document.body.querySelectorAll('article, main, section, div').forEach((node) => {
         if (inspected >= 1200) return;
         inspected += 1;
-        const textLen = normalizeText(node.textContent || '').length;
+        const textLen = RM_UTILS.normalizeText(node.textContent || '').length;
         if (textLen < 220) return;
         add(node);
       });
@@ -1549,7 +1437,7 @@
 
   function scoreContentCandidate(node: Element) {
     if (!node) return -Infinity;
-    const textLen = normalizeText(node.textContent || '').length;
+    const textLen = RM_UTILS.normalizeText(node.textContent || '').length;
     if (textLen < 180) return -Infinity;
 
     const linkTextLen = getLinkTextLength(node);
@@ -1597,15 +1485,15 @@
     if (!root) return document.body;
     let current = root;
     for (let i = 0; i < 6; i += 1) {
-      const textLen = normalizeText(current.textContent || '').length;
+      const textLen = RM_UTILS.normalizeText(current.textContent || '').length;
       if (!textLen) break;
       const children = Array.from(current.children as HTMLCollectionOf<Element>).filter((child) => {
-        const childTextLen = normalizeText(child.textContent || '').length;
+        const childTextLen = RM_UTILS.normalizeText(child.textContent || '').length;
         return childTextLen >= 90;
       });
       if (children.length !== 1) break;
       const onlyChild = children[0];
-      const childLen = normalizeText(onlyChild.textContent || '').length;
+      const childLen = RM_UTILS.normalizeText(onlyChild.textContent || '').length;
       if (childLen / textLen < 0.85) break;
       current = onlyChild;
     }
@@ -1671,7 +1559,7 @@
     if (node.querySelector('pre, code, blockquote')) return false;
     if (node.tagName.toLowerCase() === 'table' && node.querySelectorAll('tr').length > 1) return false;
 
-    const textLen = normalizeText(node.textContent || '').length;
+    const textLen = RM_UTILS.normalizeText(node.textContent || '').length;
     const anchorCount = node.querySelectorAll('a').length;
     const paragraphCount = node.querySelectorAll('p').length;
     const headingCount = node.querySelectorAll('h1, h2, h3, h4').length;
@@ -1699,7 +1587,7 @@
       if (!child) break;
       if (current.children.length !== 1) break;
       if (!['DIV', 'SECTION', 'MAIN', 'ARTICLE'].includes(child.tagName)) break;
-      const childTextLen = normalizeText(child.textContent || '').length;
+      const childTextLen = RM_UTILS.normalizeText(child.textContent || '').length;
       if (childTextLen < 120) break;
       current = child;
     }
@@ -1715,7 +1603,7 @@
     nodes.forEach((node) => {
       if (node === root) return;
       if (node.children.length > 0) return;
-      const text = normalizeText(node.textContent || '');
+      const text = RM_UTILS.normalizeText(node.textContent || '');
       if (!text) {
         node.remove();
       }
@@ -1827,9 +1715,9 @@
     if (!pre) return '';
     const rowsText = extractLineNumberedRowsText(pre);
     if (rowsText !== null) {
-      return normalizeCodeText(rowsText);
+      return RM_UTILS.normalizeCodeText(rowsText);
     }
-    return normalizeCodeText(pre.textContent || '');
+    return RM_UTILS.normalizeCodeText(pre.textContent || '');
   }
 
   function extractLineNumberedRowsText(pre: HTMLElement) {
@@ -1873,14 +1761,14 @@
     if (!cells.length) return null;
 
     if (cells.length >= 2) {
-      const maybeLineNumber = compactText(cells[0].textContent || '');
+      const maybeLineNumber = RM_UTILS.compactText(cells[0].textContent || '');
       const candidateCodeCells = cells.slice(1);
       const codeCell = candidateCodeCells.reduce((best, cell) => {
         const bestLen = best ? (best.textContent || '').length : -1;
         const cellLen = (cell.textContent || '').length;
         return cellLen > bestLen ? cell : best;
       }, null);
-      if (isLikelyLineNumber(maybeLineNumber)) {
+      if (RM_UTILS.isLikelyLineNumber(maybeLineNumber)) {
         return {
           lineNumber: Number(maybeLineNumber),
           code: codeCell ? (codeCell.textContent || '') : ''
@@ -1889,20 +1777,12 @@
     }
 
     const text = row.textContent || '';
-    const compact = compactText(text);
-    if (!compact || isLikelyLineNumber(compact)) return null;
+    const compact = RM_UTILS.compactText(text);
+    if (!compact || RM_UTILS.isLikelyLineNumber(compact)) return null;
     return {
       lineNumber: null,
       code: text
     };
-  }
-
-  function compactText(text) {
-    return (text || '').replace(/\s+/g, ' ').trim();
-  }
-
-  function isLikelyLineNumber(text) {
-    return /^\d{1,6}$/.test((text || '').trim());
   }
 
   function enhanceCallouts(container) {
@@ -1999,16 +1879,16 @@
     let match;
     while ((match = TOKEN_REGEX.exec(raw)) !== null) {
       const token = match[0];
-      result += escapeHtml(raw.slice(lastIndex, match.index));
+      result += RM_UTILS.escapeHtml(raw.slice(lastIndex, match.index));
       const cls = classifyToken(token, language);
       if (cls === 'plain') {
-        result += escapeHtml(token);
+        result += RM_UTILS.escapeHtml(token);
       } else {
-        result += `<span class="rm-token rm-${cls}">${escapeHtml(token)}</span>`;
+        result += `<span class="rm-token rm-${cls}">${RM_UTILS.escapeHtml(token)}</span>`;
       }
       lastIndex = match.index + token.length;
     }
-    result += escapeHtml(raw.slice(lastIndex));
+    result += RM_UTILS.escapeHtml(raw.slice(lastIndex));
     return result;
   }
 
@@ -2039,15 +1919,6 @@
       return 'keyword';
     }
     return 'plain';
-  }
-
-  function escapeHtml(text) {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
   }
 
   function stripPresentation(root) {
@@ -2103,7 +1974,7 @@
     if (!node || !node.tagName) return false;
     const tag = node.tagName.toUpperCase();
     if (tag === 'H2' || tag === 'H3' || tag === 'H4') return true;
-    const text = normalizeText(node.textContent || '');
+    const text = RM_UTILS.normalizeText(node.textContent || '');
     if (!text) return false;
     const linkRatio = getAnchorTextRatio(node);
     if (tag === 'P' && text.length >= 90 && linkRatio < 0.45) return true;
@@ -2112,7 +1983,7 @@
 
   function isLikelyNoiseBlock(node) {
     if (!node) return false;
-    const text = normalizeText(node.textContent || '').toLowerCase();
+    const text = RM_UTILS.normalizeText(node.textContent || '').toLowerCase();
     if (!text) return true;
 
     const anchorCount = node.querySelectorAll('a').length;
@@ -2133,11 +2004,11 @@
   }
 
   function getAnchorTextRatio(node) {
-    const total = normalizeText(node.textContent || '').length;
+    const total = RM_UTILS.normalizeText(node.textContent || '').length;
     if (!total) return 0;
     let anchorChars = 0;
     node.querySelectorAll('a').forEach((anchor) => {
-      anchorChars += normalizeText(anchor.textContent || '').length;
+      anchorChars += RM_UTILS.normalizeText(anchor.textContent || '').length;
     });
     return anchorChars / total;
   }
@@ -2146,17 +2017,9 @@
     let total = 0;
     if (!node || !node.querySelectorAll) return total;
     node.querySelectorAll('a').forEach((anchor) => {
-      total += normalizeText(anchor.textContent || '').length;
+      total += RM_UTILS.normalizeText(anchor.textContent || '').length;
     });
     return total;
-  }
-
-  function normalizeCodeText(text) {
-    if (!text) return '';
-    return text
-      .replace(/\r\n?/g, '\n')
-      .replace(/\u00a0/g, ' ')
-      .replace(/^\n+|\n+$/g, '');
   }
 
   function detectCodeLanguage(raw) {
@@ -2200,19 +2063,6 @@
     return languageSet.has(token);
   }
 
-  function normalizeTheme(theme) {
-    return theme === 'dark' ? 'dark' : 'light';
-  }
-
-  function normalizeSettings(values) {
-    const merged = { ...DEFAULT_SETTINGS, ...values };
-    const theme = normalizeTheme(merged.readerTheme);
-    merged.readerTheme = theme;
-    merged.codeTheme = theme;
-    merged.toggleShortcut = normalizeShortcut(merged.toggleShortcut);
-    return merged;
-  }
-
   function setThemeButtons(lightButton, darkButton, theme) {
     const isLight = theme === 'light';
     const isDark = theme === 'dark';
@@ -2229,113 +2079,9 @@
       options.push({ label: 'Custom', value: currentValue });
     }
     selectElement.innerHTML = options
-      .map((item) => `<option value="${escapeHtml(item.value)}">${escapeHtml(item.label)}</option>`)
+      .map((item) => `<option value="${RM_UTILS.escapeHtml(item.value)}">${RM_UTILS.escapeHtml(item.label)}</option>`)
       .join('');
     selectElement.value = currentValue;
-  }
-
-  function getDefaultToggleShortcut() {
-    if (isMacOS()) {
-      return {
-        key: 'r',
-        ctrlKey: false,
-        altKey: true,
-        shiftKey: false,
-        metaKey: false
-      };
-    }
-    return {
-      key: 'r',
-      ctrlKey: true,
-      altKey: false,
-      shiftKey: true,
-      metaKey: false
-    };
-  }
-
-  function isMacOS() {
-    return /Mac|iPhone|iPad|iPod/.test(navigator.platform || '');
-  }
-
-  function normalizeShortcut(shortcut) {
-    const base = getDefaultToggleShortcut();
-    if (!shortcut || typeof shortcut !== 'object') return base;
-    const key = normalizeShortcutKey(shortcut.key);
-    if (!key) return base;
-    const normalized = {
-      key,
-      ctrlKey: Boolean(shortcut.ctrlKey),
-      altKey: Boolean(shortcut.altKey),
-      shiftKey: Boolean(shortcut.shiftKey),
-      metaKey: Boolean(shortcut.metaKey)
-    };
-    if (!normalized.ctrlKey && !normalized.altKey && !normalized.shiftKey && !normalized.metaKey) {
-      return base;
-    }
-    if (isMacOS() && normalized.key === 'r' && !normalized.shiftKey) {
-      const cmdOnly = normalized.metaKey && !normalized.ctrlKey && !normalized.altKey;
-      const ctrlOnly = normalized.ctrlKey && !normalized.metaKey && !normalized.altKey;
-      if (cmdOnly || ctrlOnly) {
-        // Keep mac default on Option+R and avoid browser reload conflicts.
-        normalized.metaKey = false;
-        normalized.ctrlKey = false;
-        normalized.altKey = true;
-      }
-    }
-    return normalized;
-  }
-
-  function eventToShortcut(event) {
-    const key = normalizeShortcutKey(event.key);
-    if (!key) return null;
-    if (key === 'Control' || key === 'Alt' || key === 'Shift' || key === 'Meta') return null;
-    return {
-      key,
-      ctrlKey: Boolean(event.ctrlKey),
-      altKey: Boolean(event.altKey),
-      shiftKey: Boolean(event.shiftKey),
-      metaKey: Boolean(event.metaKey)
-    };
-  }
-
-  function normalizeShortcutKey(key) {
-    if (!key || typeof key !== 'string') return '';
-    if (key.length === 1) return key.toLowerCase();
-    const alias = {
-      ' ': 'Space',
-      Spacebar: 'Space',
-      Esc: 'Escape',
-      Del: 'Delete'
-    };
-    return alias[key] || key;
-  }
-
-  function formatShortcut(shortcut) {
-    const value = normalizeShortcut(shortcut);
-    const mac = isMacOS();
-    const parts = [];
-    if (value.ctrlKey) parts.push(mac ? '^' : 'Ctrl');
-    if (value.altKey) parts.push(mac ? 'Option' : 'Alt');
-    if (value.shiftKey) parts.push('Shift');
-    if (value.metaKey) parts.push(mac ? 'Cmd' : 'Meta');
-    parts.push(formatShortcutKeyForDisplay(value.key));
-    return parts.join('+');
-  }
-
-  function formatShortcutKeyForDisplay(key) {
-    if (!key) return '';
-    if (key.length === 1) return key.toUpperCase();
-    return key;
-  }
-
-  function shortcutMatchesEvent(shortcut, event) {
-    const value = normalizeShortcut(shortcut);
-    if (Boolean(event.ctrlKey) !== value.ctrlKey) return false;
-    if (Boolean(event.altKey) !== value.altKey) return false;
-    if (Boolean(event.shiftKey) !== value.shiftKey) return false;
-    if (Boolean(event.metaKey) !== value.metaKey) return false;
-    const key = normalizeShortcutKey(event.key);
-    return key === value.key;
   }
 
   function setToolbarButtonIcon(button, iconName) {
@@ -2370,16 +2116,4 @@
     }
   }
 
-  function normalizeText(value) {
-    return value.replace(/\s+/g, ' ').trim();
-  }
-
-  function clamp(value, min, max) {
-    return Math.min(Math.max(value, min), max);
-  }
-
-  function capitalize(value) {
-    if (!value) return '';
-    return value.charAt(0).toUpperCase() + value.slice(1);
-  }
 })();
