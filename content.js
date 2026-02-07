@@ -1496,9 +1496,12 @@
 
   function enhanceCodeBlocks(container) {
     container.querySelectorAll('pre').forEach((pre) => {
+      if (pre.parentElement && pre.parentElement.tagName === 'CODE' && pre.parentElement.childElementCount === 1) {
+        pre.parentElement.replaceWith(pre);
+      }
       pre.classList.add('rm-code-block');
-      const raw = normalizeCodeText(pre.textContent || '');
-      let code = pre.querySelector('code');
+      const raw = extractCodeText(pre);
+      let code = pre.querySelector(':scope > code');
       if (!code) {
         code = document.createElement('code');
         pre.textContent = '';
@@ -1528,6 +1531,88 @@
         pre.appendChild(copyButton);
       }
     });
+  }
+
+  function extractCodeText(pre) {
+    if (!pre) return '';
+    const rowsText = extractLineNumberedRowsText(pre);
+    if (rowsText !== null) {
+      return normalizeCodeText(rowsText);
+    }
+    return normalizeCodeText(pre.textContent || '');
+  }
+
+  function extractLineNumberedRowsText(pre) {
+    const rows = Array.from(pre.children).filter((child) => child.tagName !== 'BUTTON');
+    if (rows.length < 2) return null;
+
+    const lines = [];
+    let numberedRows = 0;
+    let sequentialRows = 0;
+    let expectedLineNumber = null;
+
+    for (const row of rows) {
+      const parsed = parseLineNumberedCodeRow(row);
+      if (!parsed) {
+        return null;
+      }
+      lines.push(parsed.code);
+      if (Number.isFinite(parsed.lineNumber)) {
+        numberedRows += 1;
+        if (expectedLineNumber === null || parsed.lineNumber === expectedLineNumber) {
+          sequentialRows += 1;
+        }
+        expectedLineNumber = parsed.lineNumber + 1;
+      } else {
+        expectedLineNumber = null;
+      }
+    }
+
+    const hasMostlyNumberedRows = numberedRows >= 2 && (numberedRows / rows.length) >= 0.6;
+    const numbersMostlySequential = numberedRows > 0 && (sequentialRows / numberedRows) >= 0.6;
+    if (!hasMostlyNumberedRows || !numbersMostlySequential) {
+      return null;
+    }
+
+    return lines.join('\n');
+  }
+
+  function parseLineNumberedCodeRow(row) {
+    if (!row || row.nodeType !== Node.ELEMENT_NODE) return null;
+    const cells = Array.from(row.children);
+    if (!cells.length) return null;
+
+    if (cells.length >= 2) {
+      const maybeLineNumber = compactText(cells[0].textContent || '');
+      const candidateCodeCells = cells.slice(1);
+      const codeCell = candidateCodeCells.reduce((best, cell) => {
+        const bestLen = best ? (best.textContent || '').length : -1;
+        const cellLen = (cell.textContent || '').length;
+        return cellLen > bestLen ? cell : best;
+      }, null);
+      if (isLikelyLineNumber(maybeLineNumber)) {
+        return {
+          lineNumber: Number(maybeLineNumber),
+          code: codeCell ? (codeCell.textContent || '') : ''
+        };
+      }
+    }
+
+    const text = row.textContent || '';
+    const compact = compactText(text);
+    if (!compact || isLikelyLineNumber(compact)) return null;
+    return {
+      lineNumber: null,
+      code: text
+    };
+  }
+
+  function compactText(text) {
+    return (text || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function isLikelyLineNumber(text) {
+    return /^\d{1,6}$/.test((text || '').trim());
   }
 
   function enhanceCallouts(container) {
@@ -1974,7 +2059,7 @@
         return `
           <svg class="rm-toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <circle cx="12" cy="12" r="3"></circle>
-            <path d="M12 2v3M12 19v3M4.9 4.9L7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1"></path>
+            <path d="M19.4 15a1.6 1.6 0 0 0 .32 1.78l.06.06a2 2 0 0 1 0 2.82 2 2 0 0 1-2.82 0l-.06-.06a1.6 1.6 0 0 0-1.78-.32 1.6 1.6 0 0 0-.98 1.47V21a2 2 0 0 1-4 0v-.09a1.6 1.6 0 0 0-.98-1.47 1.6 1.6 0 0 0-1.78.32l-.06.06a2 2 0 0 1-2.82 0 2 2 0 0 1 0-2.82l.06-.06a1.6 1.6 0 0 0 .32-1.78 1.6 1.6 0 0 0-1.47-.98H3a2 2 0 0 1 0-4h.09a1.6 1.6 0 0 0 1.47-.98 1.6 1.6 0 0 0-.32-1.78l-.06-.06a2 2 0 0 1 0-2.82 2 2 0 0 1 2.82 0l.06.06a1.6 1.6 0 0 0 1.78.32 1.6 1.6 0 0 0 .98-1.47V3a2 2 0 0 1 4 0v.09a1.6 1.6 0 0 0 .98 1.47 1.6 1.6 0 0 0 1.78-.32l.06-.06a2 2 0 0 1 2.82 0 2 2 0 0 1 0 2.82l-.06.06a1.6 1.6 0 0 0-.32 1.78 1.6 1.6 0 0 0 1.47.98H21a2 2 0 0 1 0 4h-.09a1.6 1.6 0 0 0-1.47.98z"></path>
           </svg>
         `;
       case 'highlight':
