@@ -2,13 +2,13 @@
   const DEFAULT_TOGGLE_SHORTCUT = getDefaultToggleShortcut();
   const DEFAULT_SETTINGS = {
     readerTheme: 'light',
-    fontFamily: '"Inter", "Helvetica Neue", Arial, sans-serif',
+    fontFamily: '"Literata", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif',
     fontSize: 18,
     lineHeight: 1.7,
     widthCh: 72,
     paragraphGap: 1.15,
-    bgColor: '#f7f1e3',
-    textColor: '#1b1b1b',
+    bgColor: '#f5efe2',
+    textColor: '#1f1b16',
     codeFontFamily: '"SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace',
     codeFontSize: 14,
     codeTheme: 'light',
@@ -18,24 +18,24 @@
 
   const THEME_PRESETS = {
     light: {
-      bgColor: '#f7f1e3',
-      textColor: '#1b1b1b',
+      bgColor: '#f5efe2',
+      textColor: '#1f1b16',
       codeTheme: 'light'
     },
     dark: {
-      bgColor: '#0f172a',
-      textColor: '#e2e8f0',
+      bgColor: '#101827',
+      textColor: '#e7e8ec',
       codeTheme: 'dark'
     }
   };
 
   const FONT_CHOICES = [
-    { label: 'Inter', value: '"Inter", "Helvetica Neue", Arial, sans-serif' },
-    { label: 'System Sans', value: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' },
-    { label: 'Charter', value: '"Charter", "Bitstream Charter", "Sitka Text", Cambria, serif' },
     { label: 'Literata', value: '"Literata", Georgia, "Times New Roman", serif' },
+    { label: 'Charter', value: '"Charter", "Bitstream Charter", "Sitka Text", Cambria, serif' },
     { label: 'Georgia', value: 'Georgia, "Times New Roman", serif' },
-    { label: 'Atkinson Hyperlegible', value: '"Atkinson Hyperlegible", "Inter", Arial, sans-serif' }
+    { label: 'Atkinson Hyperlegible', value: '"Atkinson Hyperlegible", "Inter", Arial, sans-serif' },
+    { label: 'Avenir Sans', value: '"Avenir Next", "Avenir", "Segoe UI", Arial, sans-serif' },
+    { label: 'System Sans', value: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }
   ];
 
   const CODE_FONT_CHOICES = [
@@ -45,6 +45,27 @@
     { label: 'Source Code Pro', value: '"Source Code Pro", "SFMono-Regular", Menlo, Monaco, Consolas, monospace' },
     { label: 'Cascadia Code', value: '"Cascadia Code", "SFMono-Regular", Menlo, Monaco, Consolas, monospace' }
   ];
+
+  const READING_PRESETS = {
+    comfort: {
+      fontSize: 19,
+      lineHeight: 1.78,
+      widthCh: 66,
+      paragraphGap: 1.24
+    },
+    focus: {
+      fontSize: 18,
+      lineHeight: 1.72,
+      widthCh: 62,
+      paragraphGap: 1.18
+    },
+    dense: {
+      fontSize: 17,
+      lineHeight: 1.58,
+      widthCh: 74,
+      paragraphGap: 1.08
+    }
+  };
 
   const TOKEN_REGEX = /\/\*[\s\S]*?\*\/|\/\/[^\n]*|--[^\n]*|#[^\n]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b\d+(?:\.\d+)?\b|@[A-Za-z_][\w]*|\b[A-Za-z_][\w$]*\b/gm;
   const KEYWORDS_BY_LANGUAGE = {
@@ -74,12 +95,15 @@
   const BUILTIN_LITERALS = new Set(['true', 'false', 'null', 'none', 'undefined']);
   const HIGHLIGHT_STORE_KEY = 'rmHighlightsV1';
   const PENDING_OPEN_KEY = 'rmPendingOpenV1';
+  const WORDS_PER_MINUTE = 220;
+  const NUMBER_FORMATTER = new Intl.NumberFormat();
 
   let overlay = null;
   let settingsPanel = null;
   let contentRoot = null;
   let readerViewport = null;
   let highlightButton = null;
+  let metaLine = null;
   let messageToast = null;
   let mediaModal = null;
   let mediaModalImage = null;
@@ -90,6 +114,7 @@
   let currentSettings = { ...DEFAULT_SETTINGS };
   let pendingPageScrollSync = false;
   let currentPageHighlights = [];
+  let currentReadingStats = { words: 0, minutes: 1 };
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg && msg.type === 'RM_TOGGLE') {
@@ -124,11 +149,19 @@
     } else {
       syncReaderFromPageScroll();
     }
+    window.requestAnimationFrame(() => {
+      updateReadingProgress();
+    });
   }
 
   function closeReader() {
     if (!overlay) return;
     closeMediaModal();
+    overlay.classList.remove('rm-settings-open');
+    const settingsToggle = overlay.querySelector('#rm-settings-toggle');
+    if (settingsToggle) {
+      settingsToggle.setAttribute('aria-expanded', 'false');
+    }
     overlay.dataset.open = 'false';
     overlay.setAttribute('aria-hidden', 'true');
   }
@@ -146,11 +179,21 @@
 
     const brand = document.createElement('div');
     brand.className = 'rm-brand';
-    brand.textContent = 'Reading Mode';
+    brand.textContent = 'Reader';
+
+    const titleWrap = document.createElement('div');
+    titleWrap.className = 'rm-title-wrap';
 
     const title = document.createElement('div');
     title.id = 'rm-title';
     title.textContent = document.title || 'Document';
+
+    metaLine = document.createElement('div');
+    metaLine.id = 'rm-meta';
+    metaLine.textContent = 'Estimating reading time...';
+
+    titleWrap.appendChild(title);
+    titleWrap.appendChild(metaLine);
 
     const actions = document.createElement('div');
     actions.className = 'rm-actions';
@@ -158,88 +201,121 @@
     const settingsToggle = document.createElement('button');
     settingsToggle.type = 'button';
     settingsToggle.id = 'rm-settings-toggle';
-    settingsToggle.textContent = 'Settings';
+    settingsToggle.setAttribute('aria-expanded', 'false');
+    settingsToggle.setAttribute('aria-label', 'Settings');
+    settingsToggle.setAttribute('title', 'Settings');
+    settingsToggle.className = 'rm-icon-btn';
+    setToolbarButtonIcon(settingsToggle, 'settings');
 
     highlightButton = document.createElement('button');
     highlightButton.type = 'button';
     highlightButton.id = 'rm-highlight';
-    highlightButton.textContent = 'Highlight';
+    highlightButton.setAttribute('aria-label', 'Highlight selected text');
+    highlightButton.setAttribute('title', 'Highlight (H)');
+    highlightButton.className = 'rm-icon-btn';
+    setToolbarButtonIcon(highlightButton, 'highlight');
 
     const exitButton = document.createElement('button');
     exitButton.type = 'button';
     exitButton.id = 'rm-exit';
-    exitButton.textContent = 'Exit';
+    exitButton.setAttribute('aria-label', 'Exit reader');
+    exitButton.setAttribute('title', 'Exit (Esc)');
+    exitButton.className = 'rm-icon-btn';
+    setToolbarButtonIcon(exitButton, 'close');
 
     actions.appendChild(highlightButton);
     actions.appendChild(settingsToggle);
     actions.appendChild(exitButton);
     toolbar.appendChild(brand);
-    toolbar.appendChild(title);
+    toolbar.appendChild(titleWrap);
     toolbar.appendChild(actions);
 
     settingsPanel = document.createElement('div');
     settingsPanel.id = 'rm-settings';
     settingsPanel.innerHTML = `
-      <div class="rm-settings-header">Reading Settings</div>
-      <div class="rm-setting">
-        <label>Theme</label>
-        <div class="rm-theme-toggle" role="group" aria-label="Theme">
-          <button id="rm-theme-light" type="button" class="rm-theme-btn" aria-pressed="false"><span class="rm-theme-icon">☀</span> Light</button>
-          <button id="rm-theme-dark" type="button" class="rm-theme-btn" aria-pressed="false"><span class="rm-theme-icon">☾</span> Dark</button>
+      <div class="rm-settings-header">
+        <div>Reading Settings</div>
+        <div class="rm-settings-subtitle">Tune comfort and contrast for long sessions.</div>
+      </div>
+      <div class="rm-settings-group">
+        <div class="rm-settings-group-title">Reading</div>
+        <div class="rm-setting">
+          <label>Quick presets</label>
+          <div class="rm-presets" role="group" aria-label="Reading presets">
+            <button id="rm-preset-comfort" type="button" class="rm-preset-btn">Comfort</button>
+            <button id="rm-preset-focus" type="button" class="rm-preset-btn">Focus</button>
+            <button id="rm-preset-dense" type="button" class="rm-preset-btn">Dense</button>
+          </div>
+        </div>
+        <div class="rm-setting">
+          <label>Theme</label>
+          <div class="rm-theme-toggle" role="group" aria-label="Theme">
+            <button id="rm-theme-light" type="button" class="rm-theme-btn" aria-pressed="false"><span class="rm-theme-icon">☀</span> Light</button>
+            <button id="rm-theme-dark" type="button" class="rm-theme-btn" aria-pressed="false"><span class="rm-theme-icon">☾</span> Dark</button>
+          </div>
+        </div>
+        <div class="rm-setting">
+          <label for="rm-font">Font family</label>
+          <select id="rm-font"></select>
+        </div>
+        <div class="rm-setting rm-range">
+          <label for="rm-font-size">Font size</label>
+          <input id="rm-font-size" type="range" min="14" max="28" step="1" />
+          <span id="rm-font-size-value"></span>
+        </div>
+        <div class="rm-setting rm-range">
+          <label for="rm-line-height">Line height</label>
+          <input id="rm-line-height" type="range" min="1.3" max="2.1" step="0.05" />
+          <span id="rm-line-height-value"></span>
+        </div>
+        <div class="rm-setting rm-range">
+          <label for="rm-width">Paragraph width</label>
+          <input id="rm-width" type="range" min="50" max="100" step="1" />
+          <span id="rm-width-value"></span>
         </div>
       </div>
-      <div class="rm-setting">
-        <label for="rm-font">Font family</label>
-        <select id="rm-font"></select>
-      </div>
-      <div class="rm-setting rm-range">
-        <label for="rm-font-size">Font size</label>
-        <input id="rm-font-size" type="range" min="14" max="28" step="1" />
-        <span id="rm-font-size-value"></span>
-      </div>
-      <div class="rm-setting rm-range">
-        <label for="rm-line-height">Line height</label>
-        <input id="rm-line-height" type="range" min="1.3" max="2.1" step="0.05" />
-        <span id="rm-line-height-value"></span>
-      </div>
-      <div class="rm-setting rm-range">
-        <label for="rm-width">Paragraph width</label>
-        <input id="rm-width" type="range" min="50" max="100" step="1" />
-        <span id="rm-width-value"></span>
-      </div>
-      <div class="rm-setting">
-        <label for="rm-bg">Background</label>
-        <input id="rm-bg" type="color" />
-      </div>
-      <div class="rm-setting">
-        <label for="rm-text">Text color</label>
-        <input id="rm-text" type="color" />
-      </div>
-      <div class="rm-setting">
-        <label for="rm-code-font">Code font</label>
-        <select id="rm-code-font"></select>
-      </div>
-      <div class="rm-setting">
-        <label for="rm-shortcut-input">Toggle shortcut</label>
-        <div class="rm-shortcut-row">
-          <input id="rm-shortcut-input" type="text" readonly />
-          <button id="rm-shortcut-set" type="button">Set</button>
-          <button id="rm-shortcut-reset" type="button">Reset</button>
+      <div class="rm-settings-group">
+        <div class="rm-settings-group-title">Colors</div>
+        <div class="rm-setting">
+          <label for="rm-bg">Background</label>
+          <input id="rm-bg" type="color" />
         </div>
-        <div id="rm-shortcut-hint">Press Set, then your key combo.</div>
+        <div class="rm-setting">
+          <label for="rm-text">Text color</label>
+          <input id="rm-text" type="color" />
+        </div>
       </div>
-      <div class="rm-setting rm-range">
-        <label for="rm-code-size">Code size</label>
-        <input id="rm-code-size" type="range" min="12" max="18" step="1" />
-        <span id="rm-code-size-value"></span>
+      <div class="rm-settings-group">
+        <div class="rm-settings-group-title">Code</div>
+        <div class="rm-setting">
+          <label for="rm-code-font">Code font</label>
+          <select id="rm-code-font"></select>
+        </div>
+        <div class="rm-setting rm-range">
+          <label for="rm-code-size">Code size</label>
+          <input id="rm-code-size" type="range" min="12" max="18" step="1" />
+          <span id="rm-code-size-value"></span>
+        </div>
+        <div class="rm-setting">
+          <label>Code theme</label>
+          <div id="rm-code-theme-sync">Synced with reader theme</div>
+        </div>
+        <div class="rm-setting rm-inline">
+          <label for="rm-wrap-code">Wrap code</label>
+          <input id="rm-wrap-code" type="checkbox" />
+        </div>
       </div>
-      <div class="rm-setting">
-        <label>Code theme</label>
-        <div id="rm-code-theme-sync">Synced with reader theme</div>
-      </div>
-      <div class="rm-setting rm-inline">
-        <label for="rm-wrap-code">Wrap code</label>
-        <input id="rm-wrap-code" type="checkbox" />
+      <div class="rm-settings-group">
+        <div class="rm-settings-group-title">Shortcuts</div>
+        <div class="rm-setting">
+          <label for="rm-shortcut-input">Toggle shortcut</label>
+          <div class="rm-shortcut-row">
+            <input id="rm-shortcut-input" type="text" readonly />
+            <button id="rm-shortcut-set" type="button">Set</button>
+            <button id="rm-shortcut-reset" type="button">Reset</button>
+          </div>
+          <div id="rm-shortcut-hint">Press Set, then your key combo.</div>
+        </div>
       </div>
       <div class="rm-setting rm-inline">
         <button id="rm-reset" type="button">Restore defaults</button>
@@ -284,7 +360,8 @@
     document.body.appendChild(overlay);
 
     settingsToggle.addEventListener('click', () => {
-      overlay.classList.toggle('rm-settings-open');
+      const isOpen = overlay.classList.toggle('rm-settings-open');
+      settingsToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
     });
 
     highlightButton.addEventListener('click', () => {
@@ -314,6 +391,7 @@
     overlay.addEventListener('click', (event) => {
       if (event.target === overlay && overlay.classList.contains('rm-settings-open')) {
         overlay.classList.remove('rm-settings-open');
+        settingsToggle.setAttribute('aria-expanded', 'false');
       }
     });
 
@@ -349,6 +427,9 @@
   function wireSettingsControls() {
     const themeLightButton = settingsPanel.querySelector('#rm-theme-light');
     const themeDarkButton = settingsPanel.querySelector('#rm-theme-dark');
+    const presetComfortButton = settingsPanel.querySelector('#rm-preset-comfort');
+    const presetFocusButton = settingsPanel.querySelector('#rm-preset-focus');
+    const presetDenseButton = settingsPanel.querySelector('#rm-preset-dense');
     const fontInput = settingsPanel.querySelector('#rm-font');
     const fontSizeInput = settingsPanel.querySelector('#rm-font-size');
     const fontSizeValue = settingsPanel.querySelector('#rm-font-size-value');
@@ -368,10 +449,16 @@
     const codeThemeSync = settingsPanel.querySelector('#rm-code-theme-sync');
     const wrapCodeInput = settingsPanel.querySelector('#rm-wrap-code');
     const resetButton = settingsPanel.querySelector('#rm-reset');
+    const presetButtons = {
+      comfort: presetComfortButton,
+      focus: presetFocusButton,
+      dense: presetDenseButton
+    };
 
     function syncControls(values) {
       const theme = normalizeTheme(values.readerTheme);
       setThemeButtons(themeLightButton, themeDarkButton, theme);
+      setPresetButtons(values);
       populateSelect(fontInput, FONT_CHOICES, values.fontFamily);
       fontSizeInput.value = String(values.fontSize);
       fontSizeValue.textContent = `${values.fontSize}px`;
@@ -392,11 +479,43 @@
       }
     }
 
+    function setPresetButtons(values) {
+      const activePreset = detectPreset(values);
+      Object.entries(presetButtons).forEach(([name, button]) => {
+        if (!button) return;
+        const isActive = activePreset === name;
+        button.classList.toggle('active', isActive);
+        button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      });
+    }
+
+    function detectPreset(values) {
+      const tolerance = 0.02;
+      const keys = ['fontSize', 'lineHeight', 'widthCh', 'paragraphGap'];
+      for (const [name, presetValues] of Object.entries(READING_PRESETS)) {
+        const matches = keys.every((key) => {
+          const target = Number(values[key]);
+          const expected = Number(presetValues[key]);
+          if (!Number.isFinite(target) || !Number.isFinite(expected)) return false;
+          return Math.abs(target - expected) <= tolerance;
+        });
+        if (matches) return name;
+      }
+      return '';
+    }
+
     function updateSettings(partial) {
       currentSettings = normalizeSettings({ ...currentSettings, ...partial });
       applySettings(currentSettings);
       saveSettings(currentSettings);
       syncControls(currentSettings);
+    }
+
+    function applyReadingPreset(presetName) {
+      const presetValues = READING_PRESETS[presetName];
+      if (!presetValues) return;
+      updateSettings({ ...presetValues });
+      showToast(`Preset applied: ${capitalize(presetName)}.`);
     }
 
     themeLightButton.addEventListener('click', () => {
@@ -405,6 +524,18 @@
 
     themeDarkButton.addEventListener('click', () => {
       updateSettings({ readerTheme: 'dark', ...THEME_PRESETS.dark, codeTheme: 'dark' });
+    });
+
+    presetComfortButton.addEventListener('click', () => {
+      applyReadingPreset('comfort');
+    });
+
+    presetFocusButton.addEventListener('click', () => {
+      applyReadingPreset('focus');
+    });
+
+    presetDenseButton.addEventListener('click', () => {
+      applyReadingPreset('dense');
     });
 
     fontInput.addEventListener('change', (event) => {
@@ -538,6 +669,8 @@
     normalizeMedia(contentRoot);
     enhanceCallouts(contentRoot);
     enhanceCodeBlocks(contentRoot);
+    currentReadingStats = calculateReadingStats(contentRoot);
+    updateReadingProgress();
     restoreHighlightsForCurrentPage();
   }
 
@@ -1006,6 +1139,36 @@
     }, 1800);
   }
 
+  function updateReadingMeta(progressPercent = 0) {
+    if (!metaLine) return;
+    const safePercent = Number.isFinite(progressPercent)
+      ? Math.min(Math.max(Math.round(progressPercent), 0), 100)
+      : 0;
+    metaLine.textContent = `${NUMBER_FORMATTER.format(currentReadingStats.words)} words • ~${currentReadingStats.minutes} min read • ${safePercent}%`;
+  }
+
+  function updateReadingProgress() {
+    if (!readerViewport) {
+      updateReadingMeta(0);
+      return;
+    }
+    const readerMax = readerViewport.scrollHeight - readerViewport.clientHeight;
+    const ratio = readerMax > 0 ? Math.min(Math.max(readerViewport.scrollTop / readerMax, 0), 1) : 0;
+    updateReadingMeta(ratio * 100);
+  }
+
+  function calculateReadingStats(root) {
+    const text = normalizeText((root && root.textContent) || '');
+    if (!text) {
+      return { words: 0, minutes: 1 };
+    }
+    const words = text.split(/\s+/).filter(Boolean).length;
+    return {
+      words,
+      minutes: Math.max(1, Math.round(words / WORDS_PER_MINUTE))
+    };
+  }
+
   function isInputLikeElement(target) {
     if (!target || !target.tagName) return false;
     const tag = target.tagName.toUpperCase();
@@ -1015,6 +1178,7 @@
 
   function onReaderScroll() {
     if (!readerViewport || overlay?.dataset.open !== 'true') return;
+    updateReadingProgress();
     if (pendingPageScrollSync) return;
     pendingPageScrollSync = true;
     requestAnimationFrame(() => {
@@ -1024,6 +1188,7 @@
       if (readerMax <= 0 || pageMax <= 0) return;
       const progress = readerViewport.scrollTop / readerMax;
       window.scrollTo(0, Math.round(progress * pageMax));
+      updateReadingProgress();
     });
   }
 
@@ -1034,10 +1199,12 @@
       const pageMax = document.documentElement.scrollHeight - window.innerHeight;
       if (readerMax <= 0 || pageMax <= 0) {
         readerViewport.scrollTop = 0;
+        updateReadingProgress();
         return;
       }
       const progress = window.scrollY / pageMax;
       readerViewport.scrollTop = Math.round(progress * readerMax);
+      updateReadingProgress();
     });
   }
 
@@ -1796,7 +1963,44 @@
     return key === value.key;
   }
 
+  function setToolbarButtonIcon(button, iconName) {
+    if (!button) return;
+    button.innerHTML = getToolbarIconMarkup(iconName);
+  }
+
+  function getToolbarIconMarkup(iconName) {
+    switch (iconName) {
+      case 'settings':
+        return `
+          <svg class="rm-toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M12 2v3M12 19v3M4.9 4.9L7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1"></path>
+          </svg>
+        `;
+      case 'highlight':
+        return `
+          <svg class="rm-toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M5 16l8-8 4 4-8 8H5z"></path>
+            <path d="M13 8l4 4"></path>
+            <path d="M3 21h7"></path>
+          </svg>
+        `;
+      case 'close':
+      default:
+        return `
+          <svg class="rm-toolbar-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6 6l12 12M18 6L6 18"></path>
+          </svg>
+        `;
+    }
+  }
+
   function normalizeText(value) {
     return value.replace(/\s+/g, ' ').trim();
+  }
+
+  function capitalize(value) {
+    if (!value) return '';
+    return value.charAt(0).toUpperCase() + value.slice(1);
   }
 })();

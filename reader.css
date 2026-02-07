@@ -755,3 +755,400 @@
     width: 100%;
   }
 }
+
+/* UX refresh overrides */
+#rm-overlay {
+  --rm-accent: #0f766e;
+  --rm-accent-strong: #0b5e58;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.22s ease, visibility 0.22s ease;
+  background:
+    radial-gradient(1800px 700px at 10% -20%, rgba(15, 118, 110, 0.12), transparent 52%),
+    radial-gradient(1200px 540px at 100% 0%, rgba(180, 83, 9, 0.08), transparent 54%),
+    var(--rm-bg, #f5efe2);
+  color: var(--rm-text, #1f1b16);
+  font-family: var(--rm-font, "Literata", "Iowan Old Style", "Palatino Linotype", Georgia, serif);
+}
+
+#rm-overlay[data-open="true"] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+#rm-overlay[data-theme="dark"] {
+  background:
+    radial-gradient(1700px 650px at 10% -20%, rgba(56, 189, 248, 0.08), transparent 52%),
+    radial-gradient(1200px 500px at 100% 0%, rgba(20, 184, 166, 0.08), transparent 52%),
+    var(--rm-bg, #101827);
+}
+
+#rm-toolbar {
+  height: 44px;
+  padding: 0 10px;
+  gap: 8px;
+  border-bottom: 1px solid rgba(23, 23, 23, 0.12);
+  background: rgba(255, 250, 240, 0.72);
+  backdrop-filter: blur(10px);
+}
+
+#rm-overlay[data-theme="dark"] #rm-toolbar {
+  background: rgba(15, 23, 42, 0.78);
+  border-bottom-color: rgba(148, 163, 184, 0.24);
+}
+
+.rm-brand {
+  border: 1px solid rgba(23, 23, 23, 0.15);
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-family: "Avenir Next", "Avenir", "Segoe UI", sans-serif;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: rgba(23, 23, 23, 0.72);
+  background: rgba(255, 255, 255, 0.74);
+}
+
+#rm-overlay[data-theme="dark"] .rm-brand {
+  border-color: rgba(148, 163, 184, 0.3);
+  color: rgba(226, 232, 240, 0.84);
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.rm-title-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+#rm-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#rm-meta {
+  font-family: "Avenir Next", "Avenir", "Segoe UI", sans-serif;
+  font-size: 11px;
+  color: rgba(23, 23, 23, 0.62);
+  flex: none;
+  white-space: nowrap;
+}
+
+.rm-actions {
+  gap: 6px;
+}
+
+#rm-toolbar button {
+  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Avenir Next", "Avenir", "Segoe UI", sans-serif;
+  font-size: 0;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border-color: rgba(23, 23, 23, 0.16);
+  background: rgba(255, 255, 255, 0.8);
+  color: #1f1b16;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+#rm-toolbar .rm-toolbar-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+#rm-overlay[data-theme="dark"] #rm-toolbar button {
+  background: rgba(15, 23, 42, 0.82);
+  border-color: rgba(148, 163, 184, 0.42);
+  color: #e7e8ec;
+}
+
+#rm-toolbar button:hover {
+  background: rgba(255, 255, 255, 0.95);
+}
+
+#rm-overlay[data-theme="dark"] #rm-toolbar button:hover {
+  background: rgba(15, 23, 42, 0.96);
+}
+
+#rm-overlay[data-theme="dark"] #rm-meta {
+  color: rgba(226, 232, 240, 0.7);
+}
+
+#rm-settings-toggle[aria-expanded="true"] {
+  border-color: rgba(15, 118, 110, 0.45);
+  background: rgba(15, 118, 110, 0.14);
+}
+
+#rm-overlay[data-theme="dark"] #rm-settings-toggle[aria-expanded="true"] {
+  border-color: rgba(45, 212, 191, 0.5);
+  background: rgba(45, 212, 191, 0.22);
+}
+
+#rm-highlight {
+  border-color: rgba(217, 119, 6, 0.45);
+  background: rgba(245, 158, 11, 0.18);
+}
+
+#rm-overlay[data-theme="dark"] #rm-highlight {
+  border-color: rgba(251, 191, 36, 0.5);
+  background: rgba(245, 158, 11, 0.26);
+}
+
+#rm-overlay button:focus-visible,
+#rm-overlay input:focus-visible,
+#rm-overlay select:focus-visible {
+  outline: 2px solid rgba(15, 118, 110, 0.65);
+  outline-offset: 2px;
+}
+
+#rm-content {
+  padding: 40px 26px 100px;
+  text-wrap: pretty;
+}
+
+#rm-content h1 {
+  margin-top: 0.4em;
+  margin-bottom: 0.55em;
+  font-size: 2.35em;
+  line-height: 1.14;
+  letter-spacing: -0.025em;
+}
+
+#rm-content h2 {
+  margin-top: 1.4em;
+  margin-bottom: 0.5em;
+  font-size: 1.62em;
+}
+
+#rm-content blockquote {
+  border-left-width: 3px;
+  border-left-color: rgba(15, 118, 110, 0.45);
+  background: rgba(15, 118, 110, 0.06);
+  border-radius: 0 10px 10px 0;
+}
+
+#rm-overlay[data-theme="dark"] #rm-content blockquote {
+  border-left-color: rgba(45, 212, 191, 0.52);
+  background: rgba(45, 212, 191, 0.12);
+}
+
+#rm-settings {
+  top: 44px;
+  width: 360px;
+  height: calc(100% - 44px);
+  padding: 18px 16px 24px;
+  background: rgba(252, 249, 242, 0.95);
+  border-left: 1px solid rgba(23, 23, 23, 0.12);
+  backdrop-filter: blur(10px);
+  box-shadow: -24px 0 38px rgba(15, 23, 42, 0.16);
+}
+
+#rm-overlay[data-theme="dark"] #rm-settings {
+  background: rgba(11, 18, 32, 0.94);
+  border-left-color: rgba(148, 163, 184, 0.24);
+  box-shadow: -24px 0 38px rgba(2, 6, 23, 0.55);
+}
+
+.rm-settings-header {
+  margin-bottom: 14px;
+}
+
+.rm-settings-subtitle {
+  margin-top: 4px;
+  font-family: "Avenir Next", "Avenir", "Segoe UI", sans-serif;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 500;
+  color: rgba(23, 23, 23, 0.58);
+}
+
+#rm-overlay[data-theme="dark"] .rm-settings-subtitle {
+  color: rgba(226, 232, 240, 0.72);
+}
+
+.rm-settings-group {
+  margin-bottom: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(23, 23, 23, 0.09);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+#rm-overlay[data-theme="dark"] .rm-settings-group {
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.44);
+}
+
+.rm-settings-group-title {
+  margin-bottom: 10px;
+  font-family: "Avenir Next", "Avenir", "Segoe UI", sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(23, 23, 23, 0.58);
+}
+
+#rm-overlay[data-theme="dark"] .rm-settings-group-title {
+  color: rgba(226, 232, 240, 0.74);
+}
+
+.rm-setting {
+  margin-bottom: 10px;
+}
+
+.rm-setting:last-child {
+  margin-bottom: 0;
+}
+
+.rm-setting label {
+  font-family: "Avenir Next", "Avenir", "Segoe UI", sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(23, 23, 23, 0.72);
+}
+
+#rm-overlay[data-theme="dark"] .rm-setting label {
+  color: rgba(226, 232, 240, 0.88);
+}
+
+.rm-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.rm-preset-btn {
+  border: 1px solid rgba(23, 23, 23, 0.2);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 7px 8px;
+  font-family: "Avenir Next", "Avenir", "Segoe UI", sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1f1b16;
+  cursor: pointer;
+}
+
+.rm-preset-btn.active {
+  border-color: rgba(15, 118, 110, 0.48);
+  color: #0f766e;
+  background: rgba(15, 118, 110, 0.14);
+}
+
+#rm-overlay[data-theme="dark"] .rm-preset-btn {
+  border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.82);
+  color: #e7e8ec;
+}
+
+#rm-overlay[data-theme="dark"] .rm-preset-btn.active {
+  border-color: rgba(45, 212, 191, 0.58);
+  background: rgba(45, 212, 191, 0.2);
+  color: #99f6e4;
+}
+
+.rm-setting input[type="text"],
+.rm-setting select {
+  border-radius: 9px;
+  padding: 7px 10px;
+  font-family: "Avenir Next", "Avenir", "Segoe UI", sans-serif;
+  font-size: 13px;
+}
+
+#rm-shortcut-set,
+#rm-shortcut-reset,
+#rm-reset {
+  border-radius: 9px;
+  font-family: "Avenir Next", "Avenir", "Segoe UI", sans-serif;
+  font-weight: 600;
+}
+
+#rm-reset {
+  width: 100%;
+  padding: 8px 10px;
+}
+
+#rm-toast {
+  bottom: 24px;
+  border: 1px solid rgba(226, 232, 240, 0.28);
+  background: rgba(17, 24, 39, 0.88);
+  font-family: "Avenir Next", "Avenir", "Segoe UI", sans-serif;
+  font-size: 12px;
+  padding: 8px 14px;
+}
+
+#rm-overlay[data-theme="dark"] #rm-toast {
+  background: rgba(148, 163, 184, 0.92);
+  border-color: rgba(15, 23, 42, 0.35);
+}
+
+@media (max-width: 900px) {
+  #rm-toolbar {
+    height: 40px;
+    padding: 0 8px;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .rm-brand {
+    display: none;
+  }
+
+  .rm-title-wrap {
+    order: 1;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .rm-actions {
+    order: 2;
+    margin-left: auto;
+  }
+
+  #rm-toolbar button {
+    width: 24px;
+    height: 24px;
+  }
+
+  #rm-toolbar .rm-toolbar-icon {
+    width: 12px;
+    height: 12px;
+  }
+
+  #rm-content {
+    padding: 30px 16px 86px;
+  }
+
+  #rm-settings {
+    top: 0;
+    height: 100%;
+    width: 100%;
+    border-left: 0;
+  }
+}
