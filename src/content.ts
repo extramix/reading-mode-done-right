@@ -1,6 +1,64 @@
 (() => {
+  type ReaderTheme = 'light' | 'dark';
+
+  interface Shortcut {
+    key: string;
+    ctrlKey: boolean;
+    altKey: boolean;
+    shiftKey: boolean;
+    metaKey: boolean;
+  }
+
+  interface ReaderSettings {
+    readerTheme: ReaderTheme;
+    fontFamily: string;
+    fontSize: number;
+    lineHeight: number;
+    widthCh: number;
+    paragraphGap: number;
+    bgColor: string;
+    textColor: string;
+    codeFontFamily: string;
+    codeFontSize: number;
+    codeTheme: ReaderTheme;
+    wrapCode: boolean;
+    toggleShortcut: Shortcut;
+  }
+
+  interface ReadingStats {
+    words: number;
+    minutes: number;
+  }
+
+  interface HighlightEntry {
+    id: string;
+    start: number;
+    end: number;
+  }
+
+  interface Point {
+    x: number;
+    y: number;
+  }
+
+  interface ReaderOpenOptions {
+    resetToTop?: boolean;
+  }
+
+  interface PendingOpenState {
+    sourceUrl: string;
+    destinationUrl: string;
+    resetToTop: boolean;
+    expiresAt: number;
+  }
+
+  interface FontChoice {
+    label: string;
+    value: string;
+  }
+
   const DEFAULT_TOGGLE_SHORTCUT = getDefaultToggleShortcut();
-  const DEFAULT_SETTINGS = {
+  const DEFAULT_SETTINGS: ReaderSettings = {
     readerTheme: 'light',
     fontFamily: '"Literata", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif',
     fontSize: 18,
@@ -29,7 +87,7 @@
     }
   };
 
-  const FONT_CHOICES = [
+  const FONT_CHOICES: FontChoice[] = [
     { label: 'Literata', value: '"Literata", Georgia, "Times New Roman", serif' },
     { label: 'Charter', value: '"Charter", "Bitstream Charter", "Sitka Text", Cambria, serif' },
     { label: 'Georgia', value: 'Georgia, "Times New Roman", serif' },
@@ -38,7 +96,7 @@
     { label: 'System Sans', value: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }
   ];
 
-  const CODE_FONT_CHOICES = [
+  const CODE_FONT_CHOICES: FontChoice[] = [
     { label: 'SF Mono', value: '"SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace' },
     { label: 'JetBrains Mono', value: '"JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, monospace' },
     { label: 'Fira Code', value: '"Fira Code", "SFMono-Regular", Menlo, Monaco, Consolas, monospace' },
@@ -98,27 +156,28 @@
   const WORDS_PER_MINUTE = 220;
   const NUMBER_FORMATTER = new Intl.NumberFormat();
 
-  let overlay = null;
-  let settingsPanel = null;
-  let contentRoot = null;
-  let readerViewport = null;
-  let selectionActionButton = null;
-  let highlightDeleteButton = null;
+  let overlay: HTMLDivElement | null = null;
+  let settingsPanel: HTMLDivElement | null = null;
+  let contentRoot: HTMLDivElement | null = null;
+  let readerViewport: HTMLDivElement | null = null;
+  let selectionActionButton: HTMLButtonElement | null = null;
+  let highlightDeleteButton: HTMLButtonElement | null = null;
   let activeHighlightDeleteId = '';
-  let metaLine = null;
-  let messageToast = null;
-  let mediaModal = null;
-  let mediaModalImage = null;
-  let mediaModalCaption = null;
-  let shortcutInput = null;
-  let shortcutHint = null;
+  let metaLine: HTMLDivElement | null = null;
+  let messageToast: HTMLDivElement | null = null;
+  let mediaModal: HTMLDivElement | null = null;
+  let mediaModalImage: HTMLImageElement | null = null;
+  let mediaModalCaption: HTMLDivElement | null = null;
+  let shortcutInput: HTMLInputElement | null = null;
+  let shortcutHint: HTMLDivElement | null = null;
   let isCapturingShortcut = false;
-  let currentSettings = { ...DEFAULT_SETTINGS };
+  let currentSettings: ReaderSettings = { ...DEFAULT_SETTINGS };
   let pendingPageScrollSync = false;
   let pendingSelectionActionFrame = 0;
-  let pendingSelectionAnchor = null;
-  let currentPageHighlights = [];
-  let currentReadingStats = { words: 0, minutes: 1 };
+  let pendingSelectionAnchor: Point | null = null;
+  let currentPageHighlights: HighlightEntry[] = [];
+  let currentReadingStats: ReadingStats = { words: 0, minutes: 1 };
+  let toastTimer = 0;
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg && msg.type === 'RM_TOGGLE') {
@@ -139,7 +198,7 @@
     }
   }
 
-  function openReader(options = {}) {
+  function openReader(options: ReaderOpenOptions = {}) {
     const { resetToTop = false } = options;
     if (!overlay) return;
     overlay.dataset.open = 'true';
@@ -400,7 +459,7 @@
     mediaModal.addEventListener('click', (event) => {
       const dialog = mediaModal.querySelector('#rm-media-modal-dialog');
       if (!dialog) return;
-      if (!dialog.contains(event.target)) {
+      if (!(event.target instanceof Node) || !dialog.contains(event.target)) {
         closeMediaModal();
       }
     });
@@ -446,30 +505,31 @@
   }
 
   function wireSettingsControls() {
-    const themeLightButton = settingsPanel.querySelector('#rm-theme-light');
-    const themeDarkButton = settingsPanel.querySelector('#rm-theme-dark');
-    const presetComfortButton = settingsPanel.querySelector('#rm-preset-comfort');
-    const presetFocusButton = settingsPanel.querySelector('#rm-preset-focus');
-    const presetDenseButton = settingsPanel.querySelector('#rm-preset-dense');
-    const fontInput = settingsPanel.querySelector('#rm-font');
-    const fontSizeInput = settingsPanel.querySelector('#rm-font-size');
-    const fontSizeValue = settingsPanel.querySelector('#rm-font-size-value');
-    const lineHeightInput = settingsPanel.querySelector('#rm-line-height');
-    const lineHeightValue = settingsPanel.querySelector('#rm-line-height-value');
-    const widthInput = settingsPanel.querySelector('#rm-width');
-    const widthValue = settingsPanel.querySelector('#rm-width-value');
-    const bgInput = settingsPanel.querySelector('#rm-bg');
-    const textInput = settingsPanel.querySelector('#rm-text');
-    const codeFontInput = settingsPanel.querySelector('#rm-code-font');
-    shortcutInput = settingsPanel.querySelector('#rm-shortcut-input');
-    const shortcutSetButton = settingsPanel.querySelector('#rm-shortcut-set');
-    const shortcutResetButton = settingsPanel.querySelector('#rm-shortcut-reset');
-    shortcutHint = settingsPanel.querySelector('#rm-shortcut-hint');
-    const codeSizeInput = settingsPanel.querySelector('#rm-code-size');
-    const codeSizeValue = settingsPanel.querySelector('#rm-code-size-value');
-    const codeThemeSync = settingsPanel.querySelector('#rm-code-theme-sync');
-    const wrapCodeInput = settingsPanel.querySelector('#rm-wrap-code');
-    const resetButton = settingsPanel.querySelector('#rm-reset');
+    if (!settingsPanel) return;
+    const themeLightButton = settingsPanel.querySelector('#rm-theme-light') as HTMLButtonElement;
+    const themeDarkButton = settingsPanel.querySelector('#rm-theme-dark') as HTMLButtonElement;
+    const presetComfortButton = settingsPanel.querySelector('#rm-preset-comfort') as HTMLButtonElement;
+    const presetFocusButton = settingsPanel.querySelector('#rm-preset-focus') as HTMLButtonElement;
+    const presetDenseButton = settingsPanel.querySelector('#rm-preset-dense') as HTMLButtonElement;
+    const fontInput = settingsPanel.querySelector('#rm-font') as HTMLSelectElement;
+    const fontSizeInput = settingsPanel.querySelector('#rm-font-size') as HTMLInputElement;
+    const fontSizeValue = settingsPanel.querySelector('#rm-font-size-value') as HTMLElement;
+    const lineHeightInput = settingsPanel.querySelector('#rm-line-height') as HTMLInputElement;
+    const lineHeightValue = settingsPanel.querySelector('#rm-line-height-value') as HTMLElement;
+    const widthInput = settingsPanel.querySelector('#rm-width') as HTMLInputElement;
+    const widthValue = settingsPanel.querySelector('#rm-width-value') as HTMLElement;
+    const bgInput = settingsPanel.querySelector('#rm-bg') as HTMLInputElement;
+    const textInput = settingsPanel.querySelector('#rm-text') as HTMLInputElement;
+    const codeFontInput = settingsPanel.querySelector('#rm-code-font') as HTMLSelectElement;
+    shortcutInput = settingsPanel.querySelector('#rm-shortcut-input') as HTMLInputElement;
+    const shortcutSetButton = settingsPanel.querySelector('#rm-shortcut-set') as HTMLButtonElement;
+    const shortcutResetButton = settingsPanel.querySelector('#rm-shortcut-reset') as HTMLButtonElement;
+    shortcutHint = settingsPanel.querySelector('#rm-shortcut-hint') as HTMLDivElement;
+    const codeSizeInput = settingsPanel.querySelector('#rm-code-size') as HTMLInputElement;
+    const codeSizeValue = settingsPanel.querySelector('#rm-code-size-value') as HTMLElement;
+    const codeThemeSync = settingsPanel.querySelector('#rm-code-theme-sync') as HTMLElement;
+    const wrapCodeInput = settingsPanel.querySelector('#rm-wrap-code') as HTMLInputElement;
+    const resetButton = settingsPanel.querySelector('#rm-reset') as HTMLButtonElement;
     const presetButtons = {
       comfort: presetComfortButton,
       focus: presetFocusButton,
@@ -560,35 +620,42 @@
     });
 
     fontInput.addEventListener('change', (event) => {
-      updateSettings({ fontFamily: event.target.value.trim() || DEFAULT_SETTINGS.fontFamily });
+      const target = event.currentTarget as HTMLSelectElement;
+      updateSettings({ fontFamily: target.value.trim() || DEFAULT_SETTINGS.fontFamily });
     });
 
     fontSizeInput.addEventListener('input', (event) => {
-      updateSettings({ fontSize: Number(event.target.value) || DEFAULT_SETTINGS.fontSize });
+      const target = event.currentTarget as HTMLInputElement;
+      updateSettings({ fontSize: Number(target.value) || DEFAULT_SETTINGS.fontSize });
     });
 
     lineHeightInput.addEventListener('input', (event) => {
-      updateSettings({ lineHeight: Number(event.target.value) || DEFAULT_SETTINGS.lineHeight });
+      const target = event.currentTarget as HTMLInputElement;
+      updateSettings({ lineHeight: Number(target.value) || DEFAULT_SETTINGS.lineHeight });
     });
 
     widthInput.addEventListener('input', (event) => {
-      updateSettings({ widthCh: Number(event.target.value) || DEFAULT_SETTINGS.widthCh });
+      const target = event.currentTarget as HTMLInputElement;
+      updateSettings({ widthCh: Number(target.value) || DEFAULT_SETTINGS.widthCh });
     });
 
     bgInput.addEventListener('input', (event) => {
+      const target = event.currentTarget as HTMLInputElement;
       updateSettings({
-        bgColor: event.target.value || DEFAULT_SETTINGS.bgColor
+        bgColor: target.value || DEFAULT_SETTINGS.bgColor
       });
     });
 
     textInput.addEventListener('input', (event) => {
+      const target = event.currentTarget as HTMLInputElement;
       updateSettings({
-        textColor: event.target.value || DEFAULT_SETTINGS.textColor
+        textColor: target.value || DEFAULT_SETTINGS.textColor
       });
     });
 
     codeFontInput.addEventListener('change', (event) => {
-      updateSettings({ codeFontFamily: event.target.value.trim() || DEFAULT_SETTINGS.codeFontFamily });
+      const target = event.currentTarget as HTMLSelectElement;
+      updateSettings({ codeFontFamily: target.value.trim() || DEFAULT_SETTINGS.codeFontFamily });
     });
 
     shortcutSetButton.addEventListener('click', () => {
@@ -625,11 +692,13 @@
     });
 
     codeSizeInput.addEventListener('input', (event) => {
-      updateSettings({ codeFontSize: Number(event.target.value) || DEFAULT_SETTINGS.codeFontSize });
+      const target = event.currentTarget as HTMLInputElement;
+      updateSettings({ codeFontSize: Number(target.value) || DEFAULT_SETTINGS.codeFontSize });
     });
 
     wrapCodeInput.addEventListener('change', (event) => {
-      updateSettings({ wrapCode: Boolean(event.target.checked) });
+      const target = event.currentTarget as HTMLInputElement;
+      updateSettings({ wrapCode: Boolean(target.checked) });
     });
 
     resetButton.addEventListener('click', () => {
@@ -663,7 +732,7 @@
     }
   }
 
-  function loadSettings() {
+  function loadSettings(): Promise<ReaderSettings> {
     return new Promise((resolve) => {
       chrome.storage.sync.get({ rmSettings: DEFAULT_SETTINGS }, (result) => {
         const stored = result && result.rmSettings ? result.rmSettings : {};
@@ -672,7 +741,7 @@
     });
   }
 
-  function saveSettings(values) {
+  function saveSettings(values: ReaderSettings) {
     chrome.storage.sync.set({ rmSettings: normalizeSettings(values) });
   }
 
@@ -862,7 +931,7 @@
     loadHighlightsForPage(getPageKey()).then((entries) => {
       if (!contentRoot) return;
       const normalized = normalizeHighlightEntries(entries);
-      const restored = [];
+      const restored: HighlightEntry[] = [];
       normalized.forEach((entry) => {
         const applied = applyHighlightByOffsets(contentRoot, entry.start, entry.end, entry.id);
         if (applied) {
@@ -968,7 +1037,7 @@
     persistCurrentHighlights();
   }
 
-  function loadHighlightsForPage(pageKey) {
+  function loadHighlightsForPage(pageKey: string): Promise<unknown[]> {
     return new Promise((resolve) => {
       chrome.storage.local.get({ [HIGHLIGHT_STORE_KEY]: {} }, (result) => {
         const store = result && result[HIGHLIGHT_STORE_KEY] ? result[HIGHLIGHT_STORE_KEY] : {};
@@ -991,7 +1060,7 @@
     });
   }
 
-  function normalizeHighlightEntries(entries) {
+  function normalizeHighlightEntries(entries: unknown[]): HighlightEntry[] {
     if (!Array.isArray(entries)) return [];
     const clean = entries
       .filter((entry) => entry && Number.isFinite(entry.start) && Number.isFinite(entry.end))
@@ -1003,7 +1072,7 @@
       .filter((entry) => entry.end > entry.start)
       .sort((a, b) => a.start - b.start);
 
-    const deduped = [];
+    const deduped: HighlightEntry[] = [];
     clean.forEach((entry) => {
       const prev = deduped[deduped.length - 1];
       if (prev && entry.start < prev.end) {
@@ -1116,7 +1185,7 @@
     return items[0].url;
   }
 
-  function markReaderOpenForNextNavigation(destinationUrl, options = {}) {
+  function markReaderOpenForNextNavigation(destinationUrl: string, options: ReaderOpenOptions = {}) {
     const { resetToTop = false } = options;
     const payload = {
       sourceUrl: toComparableUrl(window.location.href),
@@ -1127,10 +1196,11 @@
     chrome.storage.local.set({ [PENDING_OPEN_KEY]: payload });
   }
 
-  function loadPendingOpen() {
+  function loadPendingOpen(): Promise<PendingOpenState | null> {
     return new Promise((resolve) => {
       chrome.storage.local.get({ [PENDING_OPEN_KEY]: null }, (result) => {
-        resolve(result && result[PENDING_OPEN_KEY] ? result[PENDING_OPEN_KEY] : null);
+        const pending = result && result[PENDING_OPEN_KEY] ? result[PENDING_OPEN_KEY] : null;
+        resolve(pending as PendingOpenState | null);
       });
     });
   }
@@ -1165,12 +1235,12 @@
     return true;
   }
 
-  function showToast(message) {
+  function showToast(message: string) {
     if (!messageToast) return;
     messageToast.textContent = message;
     messageToast.classList.add('show');
-    window.clearTimeout(showToast.timer);
-    showToast.timer = window.setTimeout(() => {
+    window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => {
       if (messageToast) {
         messageToast.classList.remove('show');
       }
@@ -1194,7 +1264,7 @@
     });
   }
 
-  function scheduleSelectionActionUpdate(anchorPoint = null) {
+  function scheduleSelectionActionUpdate(anchorPoint: Point | null = null) {
     if (anchorPoint && Number.isFinite(anchorPoint.x) && Number.isFinite(anchorPoint.y)) {
       pendingSelectionAnchor = {
         x: anchorPoint.x,
@@ -1211,7 +1281,7 @@
     });
   }
 
-  function updateSelectionAction(anchorPoint = null) {
+  function updateSelectionAction(anchorPoint: Point | null = null) {
     if (!overlay || overlay.dataset.open !== 'true' || !selectionActionButton || !contentRoot) {
       hideSelectionAction();
       return;
@@ -1316,7 +1386,7 @@
 
   function findHighlightNodeById(id) {
     if (!id || !contentRoot) return null;
-    const nodes = contentRoot.querySelectorAll('.rm-highlight');
+    const nodes = contentRoot.querySelectorAll<HTMLElement>('.rm-highlight');
     for (const node of nodes) {
       if (node.dataset.highlightId === id) {
         return node;
@@ -1343,7 +1413,7 @@
     updateReadingMeta(ratio * 100);
   }
 
-  function calculateReadingStats(root) {
+  function calculateReadingStats(root: HTMLElement | null): ReadingStats {
     const text = normalizeText((root && root.textContent) || '');
     if (!text) {
       return { words: 0, minutes: 1 };
@@ -1355,8 +1425,8 @@
     };
   }
 
-  function isInputLikeElement(target) {
-    if (!target || !target.tagName) return false;
+  function isInputLikeElement(target: EventTarget | null): boolean {
+    if (!(target instanceof Element)) return false;
     const tag = target.tagName.toUpperCase();
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
     return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
@@ -1398,9 +1468,9 @@
     });
   }
 
-  function extractArticle() {
+  function extractArticle(): HTMLElement {
     const source = pickMainContentRoot();
-    const clone = source.cloneNode(true);
+    const clone = source.cloneNode(true) as HTMLElement;
     pruneGlobalNoise(clone);
     stripPresentation(clone);
     removeInteractiveElements(clone);
@@ -1412,7 +1482,7 @@
     return clone;
   }
 
-  function pickMainContentRoot() {
+  function pickMainContentRoot(): Element {
     const candidates = getCandidateNodes();
     let best = null;
     let bestScore = -Infinity;
@@ -1429,7 +1499,7 @@
     return shrinkToReadableSubtree(root);
   }
 
-  function getCandidateNodes() {
+  function getCandidateNodes(): Element[] {
     const selectors = [
       'article',
       'main',
@@ -1447,9 +1517,9 @@
       '.awsui-doc-content'
     ];
 
-    const nodes = [];
-    const seen = new Set();
-    const add = (node) => {
+    const nodes: Element[] = [];
+    const seen = new Set<Element>();
+    const add = (node: Element) => {
       if (!node || seen.has(node)) return;
       if (!node.isConnected) return;
       seen.add(node);
@@ -1477,7 +1547,7 @@
     return nodes;
   }
 
-  function scoreContentCandidate(node) {
+  function scoreContentCandidate(node: Element) {
     if (!node) return -Infinity;
     const textLen = normalizeText(node.textContent || '').length;
     if (textLen < 180) return -Infinity;
@@ -1523,13 +1593,13 @@
     return score;
   }
 
-  function shrinkToReadableSubtree(root) {
+  function shrinkToReadableSubtree(root: Element | null): Element {
     if (!root) return document.body;
     let current = root;
     for (let i = 0; i < 6; i += 1) {
       const textLen = normalizeText(current.textContent || '').length;
       if (!textLen) break;
-      const children = Array.from(current.children).filter((child) => {
+      const children = Array.from(current.children as HTMLCollectionOf<Element>).filter((child) => {
         const childTextLen = normalizeText(child.textContent || '').length;
         return childTextLen >= 90;
       });
@@ -1584,9 +1654,9 @@
     });
   }
 
-  function removeBoilerplateNodes(root) {
+  function removeBoilerplateNodes(root: Element) {
     if (!root || !root.querySelectorAll) return;
-    const nodes = Array.from(root.querySelectorAll('section, div, ul, ol, p, table'));
+    const nodes = Array.from(root.querySelectorAll('section, div, ul, ol, p, table')) as Element[];
     nodes.reverse();
     nodes.forEach((node) => {
       if (node === root) return;
@@ -1596,7 +1666,7 @@
     });
   }
 
-  function shouldPruneBoilerplateNode(node) {
+  function shouldPruneBoilerplateNode(node: Element) {
     if (!node || !node.tagName) return false;
     if (node.querySelector('pre, code, blockquote')) return false;
     if (node.tagName.toLowerCase() === 'table' && node.querySelectorAll('tr').length > 1) return false;
@@ -1621,7 +1691,7 @@
     return false;
   }
 
-  function unwrapSingleChildChains(root) {
+  function unwrapSingleChildChains(root: Element) {
     if (!root || !root.children || root.children.length !== 1) return;
     let current = root;
     for (let i = 0; i < 4; i += 1) {
@@ -1638,9 +1708,9 @@
     }
   }
 
-  function removeEmptyNodes(root) {
+  function removeEmptyNodes(root: Element) {
     if (!root || !root.querySelectorAll) return;
-    const nodes = Array.from(root.querySelectorAll('div, section, article, p, li'));
+    const nodes = Array.from(root.querySelectorAll('div, section, article, p, li')) as Element[];
     nodes.reverse();
     nodes.forEach((node) => {
       if (node === root) return;
@@ -1753,7 +1823,7 @@
     button.textContent = '';
   }
 
-  function extractCodeText(pre) {
+  function extractCodeText(pre: HTMLElement) {
     if (!pre) return '';
     const rowsText = extractLineNumberedRowsText(pre);
     if (rowsText !== null) {
@@ -1762,8 +1832,8 @@
     return normalizeCodeText(pre.textContent || '');
   }
 
-  function extractLineNumberedRowsText(pre) {
-    const rows = Array.from(pre.children).filter((child) => child.tagName !== 'BUTTON');
+  function extractLineNumberedRowsText(pre: HTMLElement) {
+    const rows = Array.from(pre.children as HTMLCollectionOf<Element>).filter((child) => child.tagName !== 'BUTTON');
     if (rows.length < 2) return null;
 
     const lines = [];
@@ -1797,7 +1867,7 @@
     return lines.join('\n');
   }
 
-  function parseLineNumberedCodeRow(row) {
+  function parseLineNumberedCodeRow(row: Element) {
     if (!row || row.nodeType !== Node.ELEMENT_NODE) return null;
     const cells = Array.from(row.children);
     if (!cells.length) return null;

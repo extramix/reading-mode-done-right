@@ -16,9 +16,17 @@ Also, even though people (me included) now rely on LLMs when they can’t find w
 
 ## Load the extension
 
-1. Open `chrome://extensions` in Chrome.
-2. Enable **Developer mode**.
-3. Click **Load unpacked** and select this folder.
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+2. Build the latest JavaScript from TypeScript:
+   ```bash
+   npm run build
+   ```
+3. Open `chrome://extensions` in Chrome.
+4. Enable **Developer mode**.
+5. Click **Load unpacked** and select this folder.
 
 ## Use it
 
@@ -39,3 +47,14 @@ Also, even though people (me included) now rely on LLMs when they can’t find w
 - Clicking links in reader mode opens them in a new tab and auto-opens reader mode at the top.
 - Images stay within paragraph width by default; click any image to open a full-size preview modal.
 - Toggle shortcut is configurable in reader settings (`Ctrl+R` default on macOS).
+
+## Development
+
+- TypeScript source lives in `src/content.ts` and `src/background.ts`.
+- Compiled extension entry files are generated to `dist/content.js` and `dist/background.js`.
+- `manifest.json` loads scripts from `dist/`.
+- Run checks/build:
+  ```bash
+  npm run typecheck
+  npm run build
+  ```
