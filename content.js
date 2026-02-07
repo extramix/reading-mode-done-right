@@ -102,7 +102,9 @@
   let settingsPanel = null;
   let contentRoot = null;
   let readerViewport = null;
-  let highlightButton = null;
+  let selectionActionButton = null;
+  let highlightDeleteButton = null;
+  let activeHighlightDeleteId = '';
   let metaLine = null;
   let messageToast = null;
   let mediaModal = null;
@@ -113,6 +115,8 @@
   let isCapturingShortcut = false;
   let currentSettings = { ...DEFAULT_SETTINGS };
   let pendingPageScrollSync = false;
+  let pendingSelectionActionFrame = 0;
+  let pendingSelectionAnchor = null;
   let currentPageHighlights = [];
   let currentReadingStats = { words: 0, minutes: 1 };
 
@@ -157,6 +161,8 @@
   function closeReader() {
     if (!overlay) return;
     closeMediaModal();
+    hideSelectionAction();
+    hideHighlightDeleteAction();
     overlay.classList.remove('rm-settings-open');
     const settingsToggle = overlay.querySelector('#rm-settings-toggle');
     if (settingsToggle) {
@@ -207,25 +213,7 @@
     settingsToggle.className = 'rm-icon-btn';
     setToolbarButtonIcon(settingsToggle, 'settings');
 
-    highlightButton = document.createElement('button');
-    highlightButton.type = 'button';
-    highlightButton.id = 'rm-highlight';
-    highlightButton.setAttribute('aria-label', 'Highlight selected text');
-    highlightButton.setAttribute('title', 'Highlight (H)');
-    highlightButton.className = 'rm-icon-btn';
-    setToolbarButtonIcon(highlightButton, 'highlight');
-
-    const exitButton = document.createElement('button');
-    exitButton.type = 'button';
-    exitButton.id = 'rm-exit';
-    exitButton.setAttribute('aria-label', 'Exit reader');
-    exitButton.setAttribute('title', 'Exit (Esc)');
-    exitButton.className = 'rm-icon-btn';
-    setToolbarButtonIcon(exitButton, 'close');
-
-    actions.appendChild(highlightButton);
     actions.appendChild(settingsToggle);
-    actions.appendChild(exitButton);
     toolbar.appendChild(brand);
     toolbar.appendChild(titleWrap);
     toolbar.appendChild(actions);
@@ -331,12 +319,45 @@
     contentRoot.id = 'rm-content';
     contentRoot.addEventListener('click', onReaderLinkClick, true);
     contentRoot.addEventListener('click', onMediaClick);
-    contentRoot.addEventListener('dblclick', onHighlightDoubleClick);
+    contentRoot.addEventListener('mousedown', onReaderMouseDown);
+    contentRoot.addEventListener('mouseup', onReaderMouseUp);
+    contentRoot.addEventListener('click', onHighlightClick);
     reader.appendChild(contentRoot);
 
     messageToast = document.createElement('div');
     messageToast.id = 'rm-toast';
     messageToast.setAttribute('aria-live', 'polite');
+
+    selectionActionButton = document.createElement('button');
+    selectionActionButton.id = 'rm-selection-action';
+    selectionActionButton.type = 'button';
+    setToolbarButtonIcon(selectionActionButton, 'highlight');
+    selectionActionButton.setAttribute('aria-label', 'Highlight selected text');
+    selectionActionButton.setAttribute('title', 'Highlight');
+    selectionActionButton.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+    });
+    selectionActionButton.addEventListener('click', () => {
+      hideSelectionAction();
+      applyHighlightFromSelection();
+    });
+
+    highlightDeleteButton = document.createElement('button');
+    highlightDeleteButton.id = 'rm-highlight-delete-action';
+    highlightDeleteButton.type = 'button';
+    highlightDeleteButton.textContent = 'Delete';
+    highlightDeleteButton.setAttribute('aria-label', 'Delete highlight');
+    highlightDeleteButton.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+    });
+    highlightDeleteButton.addEventListener('click', () => {
+      const id = activeHighlightDeleteId;
+      const node = findHighlightNodeById(id);
+      hideHighlightDeleteAction();
+      if (id && node) {
+        removeHighlightById(id, node);
+      }
+    });
 
     mediaModal = document.createElement('div');
     mediaModal.id = 'rm-media-modal';
@@ -355,6 +376,8 @@
     overlay.appendChild(toolbar);
     overlay.appendChild(settingsPanel);
     overlay.appendChild(reader);
+    overlay.appendChild(selectionActionButton);
+    overlay.appendChild(highlightDeleteButton);
     overlay.appendChild(messageToast);
     overlay.appendChild(mediaModal);
     document.body.appendChild(overlay);
@@ -362,14 +385,8 @@
     settingsToggle.addEventListener('click', () => {
       const isOpen = overlay.classList.toggle('rm-settings-open');
       settingsToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-    });
-
-    highlightButton.addEventListener('click', () => {
-      applyHighlightFromSelection();
-    });
-
-    exitButton.addEventListener('click', () => {
-      closeReader();
+      hideSelectionAction();
+      hideHighlightDeleteAction();
     });
 
     mediaModal.querySelector('#rm-media-close').addEventListener('click', () => {
@@ -393,6 +410,8 @@
         overlay.classList.remove('rm-settings-open');
         settingsToggle.setAttribute('aria-expanded', 'false');
       }
+      hideSelectionAction();
+      hideHighlightDeleteAction();
     });
 
     document.addEventListener('keydown', (event) => {
@@ -417,6 +436,8 @@
         if (isInputLikeElement(event.target)) return;
         event.preventDefault();
         applyHighlightFromSelection();
+        hideSelectionAction();
+        hideHighlightDeleteAction();
       }
     });
 
@@ -657,6 +678,8 @@
 
   function renderContent() {
     if (!contentRoot) return;
+    hideSelectionAction();
+    hideHighlightDeleteAction();
     contentRoot.innerHTML = '';
     currentPageHighlights = [];
     const article = extractArticle();
@@ -709,6 +732,7 @@
     if (!target || !target.closest) return;
     const anchor = target.closest('a[href]');
     if (!anchor) return;
+    if (target.closest('.rm-highlight')) return;
     if (event.defaultPrevented) return;
     if (!isPrimaryNavigationClick(event)) return;
     if (anchor.hasAttribute('download')) return;
@@ -743,12 +767,23 @@
     openMediaModal(target);
   }
 
-  function onHighlightDoubleClick(event) {
+  function onHighlightClick(event) {
     const node = event.target && event.target.closest ? event.target.closest('.rm-highlight') : null;
-    if (!node) return;
-    removeHighlightById(node.dataset.highlightId, node);
+    if (!node || !contentRoot || !contentRoot.contains(node)) return;
+    if (event.defaultPrevented) return;
     event.preventDefault();
     event.stopPropagation();
+    hideSelectionAction();
+    const id = node.dataset.highlightId || '';
+    if (!id) return;
+    if (highlightDeleteButton?.classList.contains('show') && activeHighlightDeleteId === id) {
+      hideHighlightDeleteAction();
+      return;
+    }
+    showHighlightDeleteAction(node, {
+      x: event.clientX,
+      y: event.clientY
+    });
   }
 
   function applyHighlightFromSelection() {
@@ -802,7 +837,8 @@
     persistCurrentHighlights();
 
     selection.removeAllRanges();
-    showToast('Highlighted. Double-click highlight to remove.');
+    hideSelectionAction();
+    hideHighlightDeleteAction();
   }
 
   function applyHighlightRange(range, id) {
@@ -917,6 +953,9 @@
 
   function removeHighlightById(id, node) {
     if (!id || !node) return;
+    if (activeHighlightDeleteId === id) {
+      hideHighlightDeleteAction();
+    }
     const parent = node.parentNode;
     if (!parent) return;
     while (node.firstChild) {
@@ -927,7 +966,6 @@
 
     currentPageHighlights = currentPageHighlights.filter((item) => item.id !== id);
     persistCurrentHighlights();
-    showToast('Highlight removed.');
   }
 
   function loadHighlightsForPage(pageKey) {
@@ -1139,6 +1177,154 @@
     }, 1800);
   }
 
+  function onReaderMouseDown() {
+    hideSelectionAction();
+    hideHighlightDeleteAction();
+  }
+
+  function onReaderMouseUp(event) {
+    if (!event || event.button !== 0) {
+      hideSelectionAction();
+      hideHighlightDeleteAction();
+      return;
+    }
+    scheduleSelectionActionUpdate({
+      x: event.clientX,
+      y: event.clientY
+    });
+  }
+
+  function scheduleSelectionActionUpdate(anchorPoint = null) {
+    if (anchorPoint && Number.isFinite(anchorPoint.x) && Number.isFinite(anchorPoint.y)) {
+      pendingSelectionAnchor = {
+        x: anchorPoint.x,
+        y: anchorPoint.y
+      };
+    } else {
+      pendingSelectionAnchor = null;
+    }
+    if (pendingSelectionActionFrame) return;
+    pendingSelectionActionFrame = window.requestAnimationFrame(() => {
+      pendingSelectionActionFrame = 0;
+      updateSelectionAction(pendingSelectionAnchor);
+      pendingSelectionAnchor = null;
+    });
+  }
+
+  function updateSelectionAction(anchorPoint = null) {
+    if (!overlay || overlay.dataset.open !== 'true' || !selectionActionButton || !contentRoot) {
+      hideSelectionAction();
+      return;
+    }
+    if (overlay.classList.contains('rm-settings-open') || isMediaModalOpen()) {
+      hideSelectionAction();
+      return;
+    }
+
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      hideSelectionAction();
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    if (!isRangeInsideContainer(range, contentRoot)) {
+      hideSelectionAction();
+      return;
+    }
+
+    const rects = range.getClientRects();
+    const rect = rects && rects.length ? rects[rects.length - 1] : range.getBoundingClientRect();
+    if (!rect || (!rect.width && !rect.height)) {
+      hideSelectionAction();
+      return;
+    }
+
+    selectionActionButton.classList.add('show');
+    const buttonWidth = selectionActionButton.offsetWidth || 30;
+    const buttonHeight = selectionActionButton.offsetHeight || 30;
+    const margin = 8;
+
+    const overlayWidth = overlay.clientWidth || window.innerWidth;
+    const overlayHeight = overlay.clientHeight || window.innerHeight;
+
+    const anchorX = anchorPoint && Number.isFinite(anchorPoint.x)
+      ? anchorPoint.x
+      : rect.left + (rect.width / 2);
+    const anchorY = anchorPoint && Number.isFinite(anchorPoint.y)
+      ? anchorPoint.y
+      : rect.bottom;
+    const cursorOffset = 4;
+    const left = clamp(anchorX + cursorOffset, margin, overlayWidth - buttonWidth - margin);
+    let top = anchorY + cursorOffset;
+    if (top + buttonHeight > overlayHeight - margin) {
+      top = anchorY - buttonHeight - cursorOffset;
+    }
+    top = clamp(top, margin, overlayHeight - buttonHeight - margin);
+
+    selectionActionButton.style.left = `${Math.round(left)}px`;
+    selectionActionButton.style.top = `${Math.round(top)}px`;
+  }
+
+  function hideSelectionAction() {
+    if (!selectionActionButton) return;
+    selectionActionButton.classList.remove('show');
+    selectionActionButton.style.left = '';
+    selectionActionButton.style.top = '';
+  }
+
+  function showHighlightDeleteAction(node, anchorPoint = null) {
+    if (!highlightDeleteButton || !node || !overlay) return;
+    const id = node.dataset.highlightId || '';
+    if (!id) return;
+
+    activeHighlightDeleteId = id;
+    highlightDeleteButton.classList.add('show');
+
+    const rect = node.getBoundingClientRect();
+    const buttonWidth = highlightDeleteButton.offsetWidth || 64;
+    const buttonHeight = highlightDeleteButton.offsetHeight || 30;
+    const margin = 8;
+    const overlayWidth = overlay.clientWidth || window.innerWidth;
+    const overlayHeight = overlay.clientHeight || window.innerHeight;
+    const anchorX = anchorPoint && Number.isFinite(anchorPoint.x)
+      ? anchorPoint.x
+      : rect.left + (rect.width / 2);
+    const anchorY = anchorPoint && Number.isFinite(anchorPoint.y)
+      ? anchorPoint.y
+      : rect.bottom;
+    const cursorOffset = 4;
+
+    const left = clamp(anchorX + cursorOffset, margin, overlayWidth - buttonWidth - margin);
+    let top = anchorY + cursorOffset;
+    if (top + buttonHeight > overlayHeight - margin) {
+      top = anchorY - buttonHeight - cursorOffset;
+    }
+    top = clamp(top, margin, overlayHeight - buttonHeight - margin);
+
+    highlightDeleteButton.style.left = `${Math.round(left)}px`;
+    highlightDeleteButton.style.top = `${Math.round(top)}px`;
+  }
+
+  function hideHighlightDeleteAction() {
+    activeHighlightDeleteId = '';
+    if (!highlightDeleteButton) return;
+    highlightDeleteButton.classList.remove('show');
+    highlightDeleteButton.style.left = '';
+    highlightDeleteButton.style.top = '';
+  }
+
+  function findHighlightNodeById(id) {
+    if (!id || !contentRoot) return null;
+    const nodes = contentRoot.querySelectorAll('.rm-highlight');
+    for (const node of nodes) {
+      if (node.dataset.highlightId === id) {
+        return node;
+      }
+    }
+    return null;
+  }
+
   function updateReadingMeta(progressPercent = 0) {
     if (!metaLine) return;
     const safePercent = Number.isFinite(progressPercent)
@@ -1178,6 +1364,8 @@
 
   function onReaderScroll() {
     if (!readerViewport || overlay?.dataset.open !== 'true') return;
+    hideSelectionAction();
+    hideHighlightDeleteAction();
     updateReadingProgress();
     if (pendingPageScrollSync) return;
     pendingPageScrollSync = true;
@@ -1205,6 +1393,8 @@
       const progress = window.scrollY / pageMax;
       readerViewport.scrollTop = Math.round(progress * readerMax);
       updateReadingProgress();
+      hideSelectionAction();
+      hideHighlightDeleteAction();
     });
   }
 
@@ -2112,6 +2302,10 @@
 
   function normalizeText(value) {
     return value.replace(/\s+/g, ' ').trim();
+  }
+
+  function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
   }
 
   function capitalize(value) {
