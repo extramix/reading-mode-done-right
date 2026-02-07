@@ -9,12 +9,12 @@
     "default_title": "Toggle Reading Mode"
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "dist/background.js"
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js"],
+      "js": ["dist/content.js"],
       "css": ["reader.css"],
       "run_at": "document_idle"
     }

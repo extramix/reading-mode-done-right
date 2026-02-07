@@ -51,7 +51,8 @@ Also, even though people (me included) now rely on LLMs when they can’t find w
 ## Development
 
 - TypeScript source lives in `src/content.ts` and `src/background.ts`.
-- Compiled extension entry files stay at project root (`content.js`, `background.js`) for Manifest V3.
+- Compiled extension entry files are generated to `dist/content.js` and `dist/background.js`.
+- `manifest.json` loads scripts from `dist/`.
 - Run checks/build:
   ```bash
   npm run typecheck
