@@ -397,6 +397,15 @@
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
+#rm-content .rm-code-shell {
+  position: relative;
+  margin: 1.4em 0;
+}
+
+#rm-content .rm-code-shell pre {
+  margin: 0;
+}
+
 #rm-overlay.rm-code-wrap #rm-content pre {
   white-space: pre-wrap;
 }
@@ -428,14 +437,61 @@
 
 #rm-content .rm-copy {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 10px;
+  right: 10px;
   border: 1px solid rgba(0, 0, 0, 0.18);
   background: rgba(255, 255, 255, 0.85);
-  padding: 4px 8px;
-  font-size: 12px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 6px;
   cursor: pointer;
+  z-index: 2;
+  color: #334155;
+}
+
+#rm-content .rm-copy::before,
+#rm-content .rm-copy::after {
+  content: "";
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.8px solid currentColor;
+  border-radius: 2px;
+}
+
+#rm-content .rm-copy::before {
+  width: 9px;
+  height: 9px;
+  transform: translate(-2px, 2px);
+}
+
+#rm-content .rm-copy::after {
+  width: 9px;
+  height: 9px;
+  transform: translate(2px, -2px);
+}
+
+#rm-content .rm-copy.is-copied::before {
+  width: 10px;
+  height: 6px;
+  border: 0;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  border-radius: 0;
+  transform: translateY(-1px) rotate(-45deg);
+}
+
+#rm-content .rm-copy.is-copied::after {
+  display: none;
+}
+
+#rm-content .rm-copy.is-copied {
+  color: #0f766e;
+  border-color: rgba(15, 118, 110, 0.38);
+  background: rgba(16, 185, 129, 0.14);
 }
 
 #rm-content .rm-token.rm-comment {
@@ -477,6 +533,12 @@
   border-color: rgba(148, 163, 184, 0.4);
   background: rgba(15, 23, 42, 0.9);
   color: #e2e8f0;
+}
+
+#rm-overlay[data-code-theme="dark"] #rm-content .rm-copy.is-copied {
+  color: #6ee7b7;
+  border-color: rgba(110, 231, 183, 0.45);
+  background: rgba(16, 185, 129, 0.2);
 }
 
 #rm-overlay[data-code-theme="dark"] #rm-content .rm-token.rm-comment {
@@ -964,6 +1026,7 @@
   border-left: 1px solid rgba(23, 23, 23, 0.12);
   backdrop-filter: blur(10px);
   box-shadow: -24px 0 38px rgba(15, 23, 42, 0.16);
+  z-index: 20;
 }
 
 #rm-overlay[data-theme="dark"] #rm-settings {

@@ -1500,6 +1500,7 @@
         pre.parentElement.replaceWith(pre);
       }
       pre.classList.add('rm-code-block');
+      const shell = ensureCodeShell(pre);
       const raw = extractCodeText(pre);
       let code = pre.querySelector(':scope > code');
       if (!code) {
@@ -1515,22 +1516,51 @@
         code.innerHTML = highlightCode(raw, language);
       }
 
-      if (!pre.querySelector('.rm-copy')) {
-        const copyButton = document.createElement('button');
-        copyButton.type = 'button';
-        copyButton.className = 'rm-copy';
-        copyButton.textContent = 'Copy';
-        copyButton.addEventListener('click', () => {
-          navigator.clipboard.writeText(raw).then(() => {
-            copyButton.textContent = 'Copied';
-            setTimeout(() => {
-              copyButton.textContent = 'Copy';
-            }, 1200);
-          });
+      const copyButton = ensureCopyButton(shell);
+      copyButton.onclick = () => {
+        navigator.clipboard.writeText(raw).then(() => {
+          setCopyButtonState(copyButton, true);
+          window.clearTimeout(copyButton._resetTimer);
+          copyButton._resetTimer = window.setTimeout(() => {
+            setCopyButtonState(copyButton, false);
+          }, 1200);
+        }).catch(() => {
+          showToast('Copy failed.');
         });
-        pre.appendChild(copyButton);
-      }
+      };
     });
+  }
+
+  function ensureCodeShell(pre) {
+    const parent = pre.parentElement;
+    if (parent && parent.classList.contains('rm-code-shell')) {
+      return parent;
+    }
+    const shell = document.createElement('div');
+    shell.className = 'rm-code-shell';
+    pre.replaceWith(shell);
+    shell.appendChild(pre);
+    return shell;
+  }
+
+  function ensureCopyButton(shell) {
+    let button = shell.querySelector(':scope > .rm-copy');
+    if (!button) {
+      button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'rm-copy';
+      shell.appendChild(button);
+    }
+    setCopyButtonState(button, false);
+    return button;
+  }
+
+  function setCopyButtonState(button, isCopied) {
+    if (!button) return;
+    button.classList.toggle('is-copied', Boolean(isCopied));
+    button.setAttribute('aria-label', isCopied ? 'Copied' : 'Copy code block');
+    button.setAttribute('title', isCopied ? 'Copied' : 'Copy');
+    button.textContent = '';
   }
 
   function extractCodeText(pre) {
